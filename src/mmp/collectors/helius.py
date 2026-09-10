@@ -5,6 +5,7 @@ Docs: https://docs.helius.dev/
 from __future__ import annotations
 import os
 import requests
+from . import meter as _meter
 
 TIMEOUT = 15
 
@@ -18,6 +19,7 @@ def rpc_url() -> str:
     return f"https://mainnet.helius-rpc.com/?api-key={api_key()}"
 
 def rpc(method: str, params: list, timeout: int = TIMEOUT):
+    _meter.count("helius")
     r = requests.post(rpc_url(), json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=timeout)
     r.raise_for_status()
     j = r.json()

@@ -12,12 +12,15 @@ from mmp.collectors import universe as uni
 from mmp.collectors import helius as hel
 from mmp.collectors import birdeye as bir
 from mmp.collectors import geckoterminal as gecko
+from mmp.collectors import honeypot_is as hp
+from mmp.collectors import meter as _meter
 from mmp.engine.signal import generate
 from mmp.risk.position import build_plan
 from mmp.storage.store import connect, save, should_alert, mark_alerted
 from mmp.storage import wallets as wal
 from mmp.storage import kol as koldb
 from mmp.storage import paper as pstore
+from mmp import safety as guard
 from mmp.notifiers.telegram import format_signal, format_summary, send_telegram
 
 def enrichment_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
@@ -30,6 +33,18 @@ def enrichment_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
             be = bir.build_enrichment(mint)
             for k, v in be.items():
                 he.setdefault(k, v)
+        except Exception:
+            pass
+    # honeypot.is (EVM, gratis): isi tax + flag honeypot yang selama ini kosong.
+    elif (cfg.get("honeypot_is") or {}).get("enabled", True):
+        try:
+            ce = hp.build_enrichment(pair.get("chainId", ""),
+                                     ((pair.get("baseToken") or {}).get("address")) or "")
+            for k, v in ce.items():
+                if k == "labels":
+                    he.setdefault("labels", []).extend(x for x in v if x not in he.setdefault("labels", []))
+                else:
+                    he.setdefault(k, v)
         except Exception:
             pass
     return he
@@ -49,26 +64,39 @@ def helius_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
 
 def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
     he = enrichment_for_pair(pair, cfg, args.use_helius)
-    # KOL confluence nyata dari DB (bukan klaim): callout 48 jam terakhir.
+    # KOL confluence nyata dari DB: callout 48 jam + flag proven + cek shilling.
     kol_callouts: list = []
+    shilling_n = 0
     try:
         koldb.init(con)
         mint = ((pair.get("baseToken") or {}).get("address")) or ""
-        kol_callouts = koldb.recent_for_token(con, mint, int((cfg.get("kol") or {}).get("window_hours", 48)))
+        kol_cfg = cfg.get("kol") or {}
+        kol_callouts = koldb.recent_for_token(con, mint, int(kol_cfg.get("window_hours", 48)))
+        for c in kol_callouts:
+            try:
+                c["proven"] = bool(koldb.handle_stats(con, c.get("handle", "")).get("proven"))
+            except Exception:
+                c["proven"] = False
+        shilling_n = koldb.recent_handles_count(con, mint, int(kol_cfg.get("shill_window_hours", 6)))
     except Exception:
-        kol_callouts = []
-    # Tracker: hitung overlap trusted wallet (hemat: hanya dari holder_accounts yg sudah diambil)
+        kol_callouts = []; shilling_n = 0
+    # Tracker: overlap trusted wallet dengan bobot confidence (proporsional).
     n_overlap = 0
+    w_bonus: float | None = None
     if (cfg.get("tracker") or {}).get("enabled", True):
         try:
             wal.init(con)
             t = wal.trusted(con, int(cfg["tracker"].get("min_trades", 5)), float(cfg["tracker"].get("min_win_rate", 0.6)))
             holders = he.get("holder_accounts", []) if he else []
-            _, n_overlap = wal.overlap_bonus(holders, t) if (holders and t) else (0.0, 0)
+            if holders and t:
+                weights = {w: wal.stats(con, w).get("confidence", 0.5) for w in t}
+                b, n_overlap = wal.overlap_bonus(holders, t, weights=weights)
+                w_bonus = b
         except Exception:
-            n_overlap = 0
+            n_overlap = 0; w_bonus = None
     sig = generate(pair, cfg, permissive=args.permissive, helius_enrich=he,
-                   trusted_overlap=n_overlap, kol_callouts=kol_callouts or None)
+                   trusted_overlap=n_overlap, trusted_bonus=w_bonus,
+                   kol_callouts=kol_callouts or None, shilling_n=shilling_n)
     sig.plan = build_plan(sig.price_usd, cfg)
     row = save(con, sig)
     sig_dict = sig.to_dict()
@@ -96,7 +124,10 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
     print(f"  plan: {sig.plan}")
     if args.notify and sig.verdict == "PASS":
         cd = int((cfg.get("telegram") or {}).get("cooldown_min", 120))
-        if should_alert(con, sig.pair_address, cd):
+        ok_alert, why = guard.allow_new(con, cfg, sig.chain, for_alert=True)
+        if not ok_alert:
+            print(f"  telegram: skip (guard: {why})")
+        elif should_alert(con, sig.pair_address, cd):
             ok = send_telegram(format_signal(sig))
             if ok:
                 mark_alerted(con, sig.pair_address)
@@ -109,12 +140,16 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
             pstore.init(con)
             if pstore.has_open(con, sig.pair_address):
                 print("  paper: skip (sudah ada OPEN di pair ini)")
-            else:
-                rp = cfg.get("paper") or {}
-                rt = cfg.get("tiers") or {}
-                risk = float(rt.get("tier2_size_pct", 0.5)) if sig.tier == 2 else float(rp.get("risk_pct", 1.0))
-                pid = pstore.open_from_signal(con, sig_dict, risk)
-                print(f"  paper: opened #{pid} (TIER-{sig.tier}, risk {risk}%)")
+                return sig.verdict, sig_dict
+            ok_new, why = guard.allow_new(con, cfg, sig.chain)
+            if not ok_new:
+                print(f"  paper: skip (guard: {why})")
+                return sig.verdict, sig_dict
+            rp = cfg.get("paper") or {}
+            rt = cfg.get("tiers") or {}
+            risk = float(rt.get("tier2_size_pct", 0.5)) if sig.tier == 2 else float(rp.get("risk_pct", 1.0))
+            pid = pstore.open_from_signal(con, sig_dict, risk)
+            print(f"  paper: opened #{pid} (TIER-{sig.tier}, risk {risk}%)")
         except Exception as e:
             print(f"  paper: skip ({e})")
     return sig.verdict, sig_dict
@@ -138,6 +173,9 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if guard.is_killed():
+        print("ABORT: KILL SWITCH aktif (data/STOP ada). Matikan via scripts/killswitch.py --off.")
+        return
     if args.chains:
         cfg["chains"]["enabled"] = [c.strip() for c in args.chains.split(",") if c.strip()]
     con = connect(db_path())
@@ -189,6 +227,7 @@ def main():
             except Exception as e:
                 print(f"- error {best.get('pairAddress')}: {e}"); n_reject += 1
         print(f"\nRingkasan: PASS={n_pass} REJECT={n_reject} (konservatif = REJECT banyak itu NORMAL)")
+        print(_meter.line())
         if args.notify and (cfg.get("telegram") or {}).get("send_summary", True):
             ok = send_telegram(format_summary(n_pass, n_reject, passes))
             print(f"Summary telegram: {'sent' if ok else 'skip (isi .env dulu)'}")

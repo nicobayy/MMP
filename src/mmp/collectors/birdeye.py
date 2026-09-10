@@ -6,6 +6,7 @@ Docs: https://docs.birdeye.so/
 from __future__ import annotations
 import os
 import requests
+from . import meter as _meter
 
 BASE = "https://public-api.birdeye.so"
 TIMEOUT = 15
@@ -17,6 +18,7 @@ def has_key() -> bool:
     return bool(api_key())
 
 def _get(path: str, params: dict | None = None):
+    _meter.count("birdeye")
     r = requests.get(f"{BASE}{path}", params=params or {},
                      headers={"X-API-KEY": api_key(), "accept": "application/json"},
                      timeout=TIMEOUT)

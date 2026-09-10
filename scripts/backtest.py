@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from mmp.config import load_config, db_path
 from mmp.collectors import dexscreener as dex
 from mmp.storage.store import connect
-from mmp.backtest.engine import settle, summarize
+from mmp.backtest.engine import settle, summarize, apply_costs
 
 def main():
     import argparse
@@ -22,6 +22,9 @@ def main():
     con = connect(db_path())
     sl_pct = float(cfg["position"]["default_stop_loss_pct"])
     tp_pct = float(cfg["position"]["default_take_profit_pct"])
+    slip = float((cfg.get("paper") or {}).get("slippage_pct", 0.5))
+    fee = float((cfg.get("paper") or {}).get("fee_pct", 0.2))
+    print(f"(PnL bersih setelah biaya asumsi {slip}% slip + {fee}% fee per sisi)")
     rows = con.execute("SELECT symbol, chain, token, pair_addr, price, payload FROM signals"
                        " WHERE verdict='PASS' ORDER BY id DESC LIMIT ?", (args.limit,)).fetchall()
     if not rows:
@@ -38,8 +41,9 @@ def main():
         if not now:
             continue
         r = settle(entry, now, sl_pct, tp_pct)
+        r["pnl_pct"] = apply_costs(r["pnl_pct"], slip, fee)
         outcomes.append({"symbol": sym, **r})
-        print(f"- {sym}: entry=${entry} now=${now} -> {r['status']} {r['pnl_pct']}%")
+        print(f"- {sym}: entry=${entry} now=${now} -> {r['status']} {r['pnl_pct']}% (net)")
     print(json.dumps(summarize(outcomes), indent=2))
 
 if __name__ == "__main__":

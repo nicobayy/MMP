@@ -60,11 +60,12 @@ dashboard/app.py             <- dashboard Streamlit
 tests/
 ```
 
-## Cara Jalan (Windows, Python 3.12)
+## Cara Jalan (Python 3.12 — Windows / Linux / macOS)
 ```powershell
-cd D:\MMP
+cd MMP
 pip install -r requirements.txt
-copy .env.example .env   # isi HELIUS_API_KEY, BIRDEYE_API_KEY, TELEGRAM_BOT_TOKEN/CHAT_ID
+copy .env.example .env    # Windows — Linux/macOS: cp .env.example .env
+# isi HELIUS_API_KEY, BIRDEYE_API_KEY, TELEGRAM_BOT_TOKEN/CHAT_ID
 # Scan 1 token Solana via address:
 python scripts/run_scan.py --token So11111111111111111111111111111111111111112 --chain solana
 # Scan multi-chain + Telegram + paper:
@@ -73,6 +74,8 @@ python scripts/run_scan.py --top-boosts --limit 5 --chains solana,base --notify 
 python scripts/run_scan.py --top-boosts --limit 10 --permissive
 # Loop berkala (scheduler):
 python scripts/scheduler.py --interval-min 60 --limit 5 --chains solana,base --notify --paper
+# Kill switch (hentikan semua):
+python scripts/killswitch.py --on   # --off untuk nyalakan lagi
 # KOL callout:
 python scripts/add_callout.py --token MINT --symbol XYZ --handle @kanal --trusted
 # Paper + backtest:
@@ -85,11 +88,23 @@ streamlit run dashboard/app.py
 pytest -q
 ```
 
+## Docker
+```bash
+docker build -t mmp .
+docker run --rm -v $(pwd)/data:/app/data --env-file .env mmp \
+  python scripts/run_scan.py --top-boosts --limit 5 --chains solana,base --notify --paper
+```
+DB & histori di-mount via volume agar tak hilang tiap rebuild.
+
 ## Catatan jujur (bukan klaim)
 - LP-lock on-chain tidak ada API publik gratis yang reliabel → MMP memakai proxy
   konservatif: mint authority (Helius) + konsentrasi top holders + penalti skor bila data kosong.
 - Backtest V1 = forward-measure (entry DB vs harga live), bukan backtest candle historis.
   Jangan pakai uang asli sebelum paper report expectancy > 0 dari minimal 20 posisi closed.
+- PnL paper/backtest = bersih setelah asumsi biaya (`paper.slippage_pct` + `fee_pct` per sisi).
+  Asumsi default optimistis untuk memecoin tipis — naikkan bila spread lebar.
+- Single-operator tool: SQLite + cache in-memory cukup untuk 1 operator.
+  Bukan untuk multi-user / HFT. Eksekusi real (swap/MEV) di luar cakupan by design.
 
 ## Konfigurasi
 Lihat `config/mmp_config.yaml`. Kunci:

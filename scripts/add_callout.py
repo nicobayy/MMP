@@ -32,7 +32,9 @@ def main():
         if not rows:
             print("Belum ada callout untuk token itu.")
         for r in rows:
-            print(f"[{'TRUSTED' if r['trusted'] else 'biasa'}] {r['handle']} via {r['source']} @ {r['ts']}")
+            st = koldb.handle_stats(con, r["handle"]) if r["handle"] else {}
+            wr = f" wr={st.get('win_rate', 0):.0%}({st.get('wins', 0)}W/{st.get('losses', 0)}L)" if st.get("calls") else " (belum ada outcome)"
+            print(f"[{'TRUSTED' if r['trusted'] else 'biasa'}{' PROVEN' if st.get('proven') else ''}] {r['handle']} via {r['source']} @ {r['ts']}{wr}")
         return
     if not args.token:
         ap.print_help(); return

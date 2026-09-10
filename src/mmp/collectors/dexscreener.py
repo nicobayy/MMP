@@ -5,6 +5,8 @@ from __future__ import annotations
 import requests
 import time
 from typing import Any
+from . import cache as _cache
+from . import meter as _meter
 
 BASE = "https://api.dexscreener.com"
 TIMEOUT = 15
@@ -14,6 +16,7 @@ def _get(path: str, retries: int = RETRIES) -> Any:
     last: Exception | None = None
     for attempt in range(retries + 1):
         try:
+            _meter.count("dexscreener")
             r = requests.get(f"{BASE}{path}", timeout=TIMEOUT)
             r.raise_for_status()
             return r.json()
@@ -24,10 +27,15 @@ def _get(path: str, retries: int = RETRIES) -> Any:
 
 def get_token_pairs(chain: str, token_address: str) -> list[dict]:
     """GET /latest/dex/tokens/{tokenAddress} -> list pairs (lintas chain)."""
+    key = f"pairs:{token_address}"
+    hit = _cache.get(key, 60)
+    if hit is not None:
+        return hit
     data = _get(f"/latest/dex/tokens/{token_address}")
     pairs = data.get("pairs") or []
     if chain and chain != "any":
         pairs = [p for p in pairs if p.get("chainId") == chain]
+    _cache.put(key, pairs, 60)
     return pairs
 
 def get_pair(chain: str, pair_address: str) -> dict | None:
@@ -43,7 +51,12 @@ def search_pairs(query: str) -> list[dict]:
 
 def get_top_boosts() -> list[dict]:
     """Token dengan boost teratas — bagus untuk universe awal."""
-    return _get("/token-boosts/top/v1")
+    hit = _cache.get("boosts", 120)
+    if hit is not None:
+        return hit
+    out = _get("/token-boosts/top/v1")
+    _cache.put("boosts", out, 120)
+    return out
 
 def pick_best_pair(pairs: list[dict]) -> dict | None:
     """Pilih pair paling likuid sebagai representasi token."""

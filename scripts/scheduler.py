@@ -7,6 +7,7 @@ import subprocess, sys, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 def main():
     import argparse
@@ -23,6 +24,10 @@ def main():
     n = 0
     print(f"Scheduler tiap {args.interval_min}m | chains={args.chains} | notify={args.notify} | paper={args.paper}")
     while True:
+        from mmp.safety import is_killed
+        if is_killed():
+            print("STOP: KILL SWITCH aktif. Scheduler berhenti.")
+            break
         n += 1
         print(f"\n===== ROUND {n} =====")
         cmd = [sys.executable, "scripts/run_scan.py", "--top-boosts", "--limit", str(args.limit), "--chains", args.chains]

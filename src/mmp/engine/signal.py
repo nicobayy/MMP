@@ -35,7 +35,8 @@ class Signal:
 def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
              sm_wallets: list | None = None, kol_callouts: list | None = None,
              permissive: bool = False, helius_enrich: dict | None = None,
-             trusted_overlap: int = 0) -> Signal:
+             trusted_overlap: int = 0, trusted_bonus: float | None = None,
+             shilling_n: int = 0) -> Signal:
     enrichment = enrichment or {}
     # Gabung enrichment Helius (mint/top holders) ke enrichment risk.
     if helius_enrich:
@@ -51,10 +52,15 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
     if sm_wallets:
         sm_score, sm_notes, sm_meta = sm_an.analyze_smart_money(pair, sm_wallets)
     elif (cfg.get("smart_money_auto") or {}).get("enabled", True):
-        sm_score, sm_notes, sm_meta, _ = sma_an.discover(pair, helius_enrich, cfg, trusted_overlap)
+        sm_score, sm_notes, sm_meta, _ = sma_an.discover(pair, helius_enrich, cfg, trusted_overlap, trusted_bonus)
     else:
         sm_score, sm_notes, sm_meta = sm_an.analyze_smart_money(pair, None)
     kol_score, kol_notes, kol_meta = kol_an.analyze_kol(pair, kol_callouts)
+    kol_cfg = cfg.get("kol") or {}
+    if shilling_n >= int(kol_cfg.get("shill_min_handles", 3)):
+        kol_score = min(kol_score, float(kol_cfg.get("shill_cap", 30)))
+        kol_notes.append(f"shilling? {shilling_n} handles/{kol_cfg.get('shill_window_hours', 6)}h -> cap {kol_cfg.get('shill_cap', 30)}")
+        kol_meta["shilling_n"] = shilling_n
 
     scores = {"liquidity_exit": liq_score, "risk_safety": safe_score,
               "token_metrics": tm_score, "smart_money": sm_score, "kol": kol_score}

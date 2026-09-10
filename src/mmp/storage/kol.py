@@ -42,3 +42,41 @@ def recent_for_token(con: sqlite3.Connection, token: str, hours: int = 48) -> li
     except Exception:
         return []
     return [{"source": r[0], "handle": r[1], "trusted": bool(r[2]), "ts": r[3]} for r in rows]
+
+def recent_handles_count(con: sqlite3.Connection, token: str, hours: int = 6) -> int:
+    """Jumlah handle BERBEDA yang callout token dalam window pendek.
+    Tinggi = indikasi coordinated shilling (atau hype legit — interpretasi di analyzer).
+    """
+    try:
+        row = con.execute(
+            "SELECT COUNT(DISTINCT handle) FROM kol_callouts"
+            " WHERE token=? AND handle<>'' AND ts >= datetime('now', ?)",
+            (token, f"-{hours} hours")).fetchone()
+        return int(row[0])
+    except Exception:
+        return 0
+
+def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
+    """Win-rate handle dari outcome paper token yang pernah di-callout.
+    TP=win, SL=loss, TIMEOUT ikut apa adanya. Tanpa data -> netral, bukan vonis.
+    """
+    try:
+        rows = con.execute(
+            "SELECT DISTINCT token FROM kol_callouts WHERE handle=?", (handle,)).fetchall()
+    except Exception:
+        return {"calls": 0, "wins": 0, "losses": 0, "win_rate": 0.0, "proven": False}
+    tokens = [r[0] for r in rows if r[0]]
+    if not tokens:
+        return {"calls": 0, "wins": 0, "losses": 0, "win_rate": 0.0, "proven": False}
+    q = ",".join("?" for _ in tokens)
+    try:
+        outs = con.execute(
+            f"SELECT close_reason FROM paper_positions WHERE status='CLOSED' AND token IN ({q})", tokens).fetchall()
+    except Exception:
+        outs = []
+    wins = sum(1 for o in outs if o[0] == "TP")
+    losses = sum(1 for o in outs if o[0] in ("SL", "TIMEOUT"))
+    n = wins + losses
+    wr = round(wins / n, 3) if n else 0.0
+    return {"calls": len(tokens), "wins": wins, "losses": losses, "win_rate": wr,
+            "proven": bool(n >= 3 and wr >= 0.6)}

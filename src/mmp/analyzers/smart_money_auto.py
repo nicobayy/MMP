@@ -8,7 +8,7 @@ wallets_proxy: list kosong (tak ada wallet tracked) atau ringkasan distribusi.
 from __future__ import annotations
 
 def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = None,
-             trusted_overlap: int = 0):
+             trusted_overlap: int = 0, trusted_bonus: float | None = None):
     cfg = cfg or {}
     sm_cfg: dict = cfg.get("smart_money_auto", {})
     max_score: float = float(sm_cfg.get("max_auto_score", 85))
@@ -59,10 +59,13 @@ def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = N
     elif he.get("mint_renounced") is False:
         score -= 10; notes.append("mint masih aktif (mintable)")
 
-    # 4. Bonus wallet terpercaya (dari tracker DB, bukan klaim kosong)
+    # 4. Bonus wallet terpercaya (dari tracker DB, bukan klaim kosong).
+    # trusted_bonus = jumlah confidence*5 per wallet overlap (proporsional);
+    # bila None, pakai legacy flat 5 per overlap agar backward-compatible.
     if trusted_overlap > 0:
-        bonus = min(trusted_overlap * 5.0, 15.0)
-        score += bonus; notes.append(f"{trusted_overlap}x trusted wallet overlap +{bonus:.0f}")
+        bonus = min(float(trusted_bonus), 15.0) if trusted_bonus is not None \
+            else min(trusted_overlap * 5.0, 15.0)
+        score += bonus; notes.append(f"{trusted_overlap}x trusted wallet overlap +{bonus:.1f}")
 
     score = max(0.0, min(max_score, score))
     meta = {"auto_score": round(score, 2), "buy_ratio": round(ratio, 3),

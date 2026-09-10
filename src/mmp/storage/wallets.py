@@ -53,7 +53,20 @@ def stats(con: sqlite3.Connection, wallet: str) -> dict:
         return {"wins": 0, "losses": 0, "win_rate": 0.0, "total_pnl": 0.0}
     w, l, p = row
     t = w + l
-    return {"wins": w, "losses": l, "win_rate": round(w / t, 3) if t else 0.0, "total_pnl": p}
+    return {"wins": w, "losses": l, "win_rate": round(w / t, 3) if t else 0.0, "total_pnl": p,
+            "confidence": confidence(w, l)}
+
+def confidence(wins: int, losses: int, shrink_n: int = 10) -> float:
+    """Confidence 0..1 per wallet: win-rate yang disusutkan saat sampel kecil.
+    5W/0L -> ~0.67 (bukan 1.0); 0 trade -> 0.5 (netral, bukan bukti).
+    """
+    wins, losses = int(wins or 0), int(losses or 0)
+    n = wins + losses
+    if n == 0:
+        return 0.5
+    wr = wins / n
+    w = min(1.0, n / max(shrink_n, 1))
+    return round(0.5 + (wr - 0.5) * w, 3)
 
 def trusted(con: sqlite3.Connection, min_trades: int = 5, min_win_rate: float = 0.6) -> list[str]:
     rows = con.execute("SELECT wallet, wins, losses FROM wallets").fetchall()
@@ -64,10 +77,18 @@ def trusted(con: sqlite3.Connection, min_trades: int = 5, min_win_rate: float = 
             out.append(w)
     return out
 
-def overlap_bonus(holders: list[str], trusted_wallets: list[str], per_wallet: float = 5.0, max_bonus: float = 15.0) -> tuple[float, int]:
-    """Bonus SM bila top holders berisi wallet terpercaya. Return (bonus, n_overlap)."""
+def overlap_bonus(holders: list[str], trusted_wallets: list[str], per_wallet: float = 5.0, max_bonus: float = 15.0,
+                  weights: dict[str, float] | None = None) -> tuple[float, int]:
+    """Bonus SM bila top holders berisi wallet terpercaya. Return (bonus, n_overlap).
+    weights = confidence per wallet (0..1); tanpa weights tiap wallet bobot 1.0 (legacy).
+    """
     if not holders or not trusted_wallets:
         return 0.0, 0
     tset = set(trusted_wallets)
-    n = sum(1 for h in holders if h in tset)
-    return min(n * per_wallet, max_bonus), n
+    n = 0
+    bonus = 0.0
+    for h in holders:
+        if h in tset:
+            n += 1
+            bonus += per_wallet * (weights.get(h, 1.0) if weights else 1.0)
+    return min(bonus, max_bonus), n

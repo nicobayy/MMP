@@ -9,6 +9,13 @@ def expectancy(winrate: float, avg_win: float, avg_loss: float) -> float:
     """E = p*W - (1-p)*L. Harus > 0 agar layak."""
     return winrate * avg_win - (1 - winrate) * avg_loss
 
+def apply_costs(pnl_pct: float, slippage_pct: float = 0.5, fee_pct: float = 0.2) -> float:
+    """PnL bersih setelah asumsi biaya round-trip (masuk+keluar).
+    Model kasar & eksplisit: bukan simulasi order book. Naikkan angka ini
+    bila main token tipis (slippage nyata memecoin sering >2%).
+    """
+    return round(pnl_pct - 2 * (abs(slippage_pct) + abs(fee_pct)), 2)
+
 def settle(entry: float, now: float, sl_pct: float, tp_pct: float, timeout_hit: bool = False) -> dict:
     """Tentukan outcome satu posisi: TP hit / SL hit / open/timeout."""
     if not entry or not now:

@@ -4,12 +4,15 @@ Docs: https://api.geckoterminal.com/
 """
 from __future__ import annotations
 import requests
+from . import cache as _cache
+from . import meter as _meter
 
 BASE = "https://api.geckoterminal.com/api/v2"
 TIMEOUT = 15
 NETWORKS = {"ethereum": "eth", "bsc": "bsc", "base": "base", "solana": "solana"}
 
 def _get(path: str):
+    _meter.count("geckoterminal")
     r = requests.get(f"{BASE}{path}", timeout=TIMEOUT, headers={"Accept": "application/json"})
     r.raise_for_status()
     return r.json()
@@ -17,9 +20,15 @@ def _get(path: str):
 def get_top_pools(chain: str, limit: int = 10) -> list[dict]:
     """Top pools per network. Gagal (rate-limit/offline) -> []."""
     net = NETWORKS.get(chain, chain)
+    key = f"gecko:top:{net}"
+    hit = _cache.get(key, 300)
+    if hit is not None:
+        return hit[:limit]
     try:
         data = _get(f"/networks/{net}/pools?page=1")
-        return (data.get("data") or [])[:limit]
+        out = (data.get("data") or [])[:limit]
+        _cache.put(key, out, 300)
+        return out
     except Exception:
         return []
 

@@ -39,8 +39,8 @@ def init(con: sqlite3.Connection):
     con.executescript(SCHEMA)
     try:
         con.execute("ALTER TABLE whale_buys ADD COLUMN sol_spent REAL DEFAULT 0")
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("wallets migrate skip: %s", str(e)[:120])
     con.commit()
 
 def set_label(con: sqlite3.Connection, wallet: str, label: str, chain: str = "solana"):
@@ -74,14 +74,16 @@ def attribute_token_outcome(con: sqlite3.Connection, token: str, win: bool, pnl:
     """
     try:
         rows = con.execute("SELECT DISTINCT wallet FROM wallet_sightings WHERE token=?", (token,)).fetchall()
-    except Exception:
+    except Exception as e:
+        log.debug("wallets attribute lookup skip: %s", str(e)[:120])
         return 0
     n = 0
     for (w,) in rows:
         try:
             record_outcome(con, w, win, pnl)
             n += 1
-        except Exception:
+        except Exception as e:
+            log.debug("wallets attribute record skip: %s", str(e)[:120])
             continue
     return n
 
@@ -147,7 +149,8 @@ def record_whale_flow(con: sqlite3.Connection, wallet: str, token: str, side: st
                               (wallet, token, side, float(amount or 0), signature or ""))
             con.commit()
             return cur.rowcount > 0
-        except Exception:
+        except Exception as e:
+            log.debug("wallets whale insert skip: %s", str(e)[:120])
             return False
 
 def recent_whale_buys(con: sqlite3.Connection, token: str, hours: int = 24,
@@ -183,5 +186,6 @@ def top_watched(con: sqlite3.Connection, limit: int = 10) -> list[str]:
         rows = con.execute("SELECT wallet, COUNT(*) c FROM wallet_sightings"
                            " GROUP BY wallet ORDER BY c DESC LIMIT ?", (limit,)).fetchall()
         return [r[0] for r in rows]
-    except Exception:
+    except Exception as e:
+        log.debug("wallets top_watched skip: %s", str(e)[:160])
         return []

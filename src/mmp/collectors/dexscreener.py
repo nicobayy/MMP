@@ -57,7 +57,8 @@ def get_pair(chain: str, pair_address: str) -> dict | None:
     return pairs[0] if pairs else None
 
 def search_pairs(query: str) -> list[dict]:
-    data = _get(f"/latest/dex/search?q={query}")
+    from urllib.parse import quote
+    data = _get(f"/latest/dex/search?q={quote(query, safe='')}")
     return data.get("pairs") or []
 
 def get_top_boosts() -> list[dict]:

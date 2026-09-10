@@ -3,7 +3,10 @@ Sumber: GeckoTerminal via collectors/ohlcv.py. Upsert per (chain, pool, tf, ts).
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS candles(
@@ -38,7 +41,8 @@ def get_candles(con: sqlite3.Connection, chain: str, pool: str, tf: str = "hour"
                            " WHERE chain=? AND pool=? AND tf=? AND ts>=?"
                            " ORDER BY ts ASC LIMIT ?",
                            (chain, pool, tf, int(since), int(limit))).fetchall()
-    except Exception:
+    except Exception as e:
+        log.debug("candles get skip: %s", str(e)[:120])
         return []
     return [{"ts": r[0], "o": r[1], "h": r[2], "l": r[3], "c": r[4], "v": r[5]} for r in rows]
 
@@ -46,6 +50,7 @@ def coverage(con: sqlite3.Connection) -> list[dict]:
     try:
         rows = con.execute("SELECT chain, pool, tf, COUNT(*), MIN(ts), MAX(ts) FROM candles"
                            " GROUP BY chain, pool, tf").fetchall()
-    except Exception:
+    except Exception as e:
+        log.debug("candles coverage skip: %s", str(e)[:120])
         return []
     return [{"chain": r[0], "pool": r[1], "tf": r[2], "n": r[3], "oldest": r[4], "newest": r[5]} for r in rows]

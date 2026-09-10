@@ -137,6 +137,6 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
               "mcap": pair.get("marketCap"), "fdv": pair.get("fdv"),
               "url": pair.get("url"),
               "dual": {"ok": dual_ok, "note": dual_note},
-              "data_grade": risk_an.data_grade(pair, enrichment)[0],
+              "data_grade": grade,
               "checklist": checklist},
     )

@@ -3,7 +3,10 @@ Tujuan: bukti expectancy sebelum uang asli dipakai.
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS paper_positions(
@@ -22,8 +25,8 @@ def init(con: sqlite3.Connection):
     con.execute(SCHEMA)
     try:  # migrasi non-destruktif untuk DB lama
         con.execute("ALTER TABLE paper_positions ADD COLUMN tier INTEGER DEFAULT 1")
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("paper migrate skip: %s", str(e)[:120])
     con.commit()
 
 def open_from_signal(con: sqlite3.Connection, sig: dict, risk_pct: float = 1.0) -> int:

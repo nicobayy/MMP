@@ -48,6 +48,10 @@ def main():
     if not args.token:
         ap.print_help()
         return
+    from mmp import validators as _v
+    if not _v.is_token_address(args.chain, args.token):
+        print(f"Token harus contract address ({_v.explain(args.chain, args.token)}), bukan ticker.")
+        return
     trust = "trusted" if args.trusted else args.trust
     rid = koldb.add_callout(con, args.token, args.symbol, args.chain, args.source,
                             args.handle, args.trusted, args.note, trust=trust, reason=args.reason)

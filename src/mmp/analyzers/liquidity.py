@@ -1,5 +1,11 @@
 """Liquidity & Exit capability analyzer.
 Pertanyaan inti: kalau kita masuk, bisa keluar dengan slippage wajar?
+
+BATAS JUJUR model impact: order hipotetis TETAP $1000 vs likuiditas
+(impact = 1000/liq*100). Bukan simulasi order book / AMM curve:
+- meremehkan slippage untuk size >> $1k, melebihkan untuk size kecil;
+- abaikan fee, MEV, dan likuiditas terkonsentrasi per tick (CLMM).
+Pakai sebagai saringan kasar, bukan janji eksekusi.
 """
 from __future__ import annotations
 
@@ -29,7 +35,9 @@ def analyze_exit(pair: dict, cfg: dict) -> tuple[float, list[str], dict]:
         notes.append(f"vol/liq rendah {ratio:.2f} (sepi, susah exit)")
     else:
         notes.append(f"vol/liq sehat {ratio:.2f}")
-    if impact_1k > liq_cfg["max_price_impact_1sol_pct"]:
+    impact_lim = float(liq_cfg.get("max_price_impact_1k_pct",
+                                liq_cfg.get("max_price_impact_1sol_pct", 5.0)))
+    if impact_1k > impact_lim:
         score -= 20
         notes.append(f"impact $1k {impact_1k:.1f}% (slippage besar)")
     if vol_h1 < 1000:

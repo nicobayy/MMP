@@ -41,7 +41,7 @@ risk:
 liquidity:
   min_liquidity_usd: 30000
   min_volume_to_liquidity_ratio: 1.0  # volume h24 / liquidity >= 1 => ada aktivitas exit
-  max_price_impact_1sol_pct: 5.0      # simulasi sederhana
+  max_price_impact_1k_pct: 5.0      # order hipotetis $1000 vs likuiditas (proxy kasar, lihat liquidity.py)
   min_dex_count: 1
 
 token_metrics:

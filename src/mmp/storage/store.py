@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS signals(
@@ -23,8 +26,8 @@ def connect(path: str):
     con = sqlite3.connect(path)
     try:
         con.execute("PRAGMA busy_timeout=5000")  # scheduler + manual berbagi DB
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("pragma busy_timeout skip: %s", str(e)[:120])
     con.executescript(SCHEMA)
     return con
 
@@ -49,7 +52,8 @@ def should_alert(con, pair_addr: str, cooldown_min: int = 120) -> bool:
         if last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
         return datetime.now(timezone.utc) - last > timedelta(minutes=cooldown_min)
-    except Exception:
+    except Exception as e:
+        log.debug("should_alert parse skip: %s", str(e)[:120])
         return True
 
 def mark_alerted(con, pair_addr: str):

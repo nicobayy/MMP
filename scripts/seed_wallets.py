@@ -15,14 +15,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
+from mmp import validators as _v  # noqa: E402
 from mmp.config import db_path  # noqa: E402
 from mmp.storage import wallets as wal  # noqa: E402
 from mmp.storage.store import connect  # noqa: E402
 
 
-def _valid(addr: str) -> bool:
-    addr = (addr or "").strip()
-    return 30 <= len(addr) <= 64 and addr.isalnum()
+def _valid(addr: str, chain: str = "solana") -> bool:
+    return _v.is_token_address(chain, addr)
+
 
 def main():
     import argparse
@@ -57,7 +58,7 @@ def main():
         return
     n = 0
     for addr, lab in items:
-        if not _valid(addr):
+        if not _valid(addr, args.chain):
             print(f"- skip format salah: {addr[:20]}")
             continue
         wal.set_label(con, addr.strip(), lab, args.chain)

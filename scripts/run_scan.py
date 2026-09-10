@@ -246,6 +246,10 @@ def main():
     n_pass = n_reject = 0
 
     if args.pair and args.chain:
+        from mmp import validators as _v
+        if not _v.is_token_address(args.chain, args.pair):
+            print(f"Alamat pair tak valid ({_v.explain(args.chain, args.pair)}).")
+            return
         pair = dex.get_pair(args.chain, args.pair)
         if not pair:
             print("Pair tidak ditemukan.")
@@ -254,6 +258,10 @@ def main():
         return
 
     if args.token:
+        from mmp import validators as _v
+        if not _v.is_token_address(args.chain, args.token):
+            print(f"Alamat token tak valid ({_v.explain(args.chain, args.token)}).")
+            return
         pairs = dex.get_token_pairs(args.chain, args.token)
         if not pairs:
             print("Token tidak ditemukan di DexScreener.")

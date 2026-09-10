@@ -5,7 +5,10 @@ Alur: catat callout manual via scripts/add_callout.py
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS kol_callouts(
@@ -26,8 +29,8 @@ def init(con: sqlite3.Connection):
     for col in ("trust TEXT DEFAULT 'untrusted'", "reason TEXT DEFAULT ''"):
         try:
             con.execute(f"ALTER TABLE kol_callouts ADD COLUMN {col}")
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("kol migrate skip: %s", str(e)[:120])
     con.commit()
 
 TRUST_LEVELS = ("trusted", "trial", "untrusted")
@@ -58,7 +61,8 @@ def recent_for_token(con: sqlite3.Connection, token: str, hours: int = 48) -> li
             "SELECT source, handle, trusted, ts, trust, reason FROM kol_callouts"
             " WHERE token=? AND ts >= datetime('now', ?)",
             (token, f"-{hours} hours")).fetchall()
-    except Exception:
+    except Exception as e:
+        log.debug("kol recent skip: %s", str(e)[:120])
         return []
     out = []
     for r in rows:
@@ -77,7 +81,8 @@ def recent_handles_count(con: sqlite3.Connection, token: str, hours: int = 6) ->
             " WHERE token=? AND handle<>'' AND ts >= datetime('now', ?)",
             (token, f"-{hours} hours")).fetchone()
         return int(row[0])
-    except Exception:
+    except Exception as e:
+        log.debug("kol handles count skip: %s", str(e)[:120])
         return 0
 
 def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
@@ -87,7 +92,8 @@ def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
     try:
         rows = con.execute(
             "SELECT DISTINCT token FROM kol_callouts WHERE handle=?", (handle,)).fetchall()
-    except Exception:
+    except Exception as e:
+        log.debug("kol handle tokens skip: %s", str(e)[:120])
         return {"calls": 0, "wins": 0, "losses": 0, "win_rate": 0.0, "proven": False}
     tokens = [r[0] for r in rows if r[0]]
     if not tokens:
@@ -96,7 +102,8 @@ def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
     try:
         outs = con.execute(
             f"SELECT close_reason FROM paper_positions WHERE status='CLOSED' AND token IN ({q})", tokens).fetchall()
-    except Exception:
+    except Exception as e:
+        log.debug("kol handle outcomes skip: %s", str(e)[:120])
         outs = []
     wins = sum(1 for o in outs if o[0] == "TP")
     losses = sum(1 for o in outs if o[0] in ("SL", "TIMEOUT"))

@@ -66,6 +66,61 @@ def get_top_holders(mint: str, limit: int = 20) -> list[dict]:
         log.warning("helius get_top_holders gagal: %s", str(e)[:160])
         return []
 
+def get_signatures(address: str, limit: int = 20) -> list[str]:
+    """Signature transaksi terakhir sebuah wallet. Gagal -> []."""
+    try:
+        res = rpc("getSignaturesForAddress", [address, {"limit": max(1, min(int(limit), 100))}])
+        return [s.get("signature", "") for s in (res or []) if s.get("signature")]
+    except Exception as e:
+        log.warning("helius get_signatures gagal: %s", str(e)[:160])
+        return []
+
+def parse_enhanced(signatures: list[str]) -> list[dict]:
+    """Parse batch signature via Helius Enhanced Transactions API.
+    Return list mentah apa adanya. Tanpa key / gagal -> []."""
+    if not has_key() or not signatures:
+        return []
+    if not _meter.allow("helius"):
+        return []
+    try:
+        with _limits.guard("helius"):
+            _meter.count("helius")
+            r = requests.post(f"https://api.helius.xyz/v0/transactions/?api-key={api_key()}",
+                              json={"transactions": signatures[:100]}, timeout=TIMEOUT)
+        r.raise_for_status()
+        out = r.json()
+        return out if isinstance(out, list) else []
+    except Exception as e:
+        log.warning("helius enhanced parse gagal: %s", str(e)[:160])
+        return []
+
+SOL_MINT = "So11111111111111111111111111111111111111112"
+
+def wallet_token_flows(wallet: str, txns: list[dict]) -> list[dict]:
+    """Ekstrak arus token untuk 1 wallet dari enhanced txns.
+    Return [{mint, side: BUY|SELL, amount, signature, ts}].
+    BUY = wallet MENERIMA token non-SOL (bayar pakai SOL/lain).
+    Heuristik eksplisit: bukan akuntansi penuh (ignore fee/arb multi-hop).
+    """
+    flows = []
+    for t in txns or []:
+        sig = t.get("transaction", {}).get("signatures", [None])[0] or t.get("signature", "")
+        ts = t.get("timestamp")
+        for tr in t.get("tokenTransfers") or []:
+            mint = tr.get("mint", "")
+            if not mint or mint == SOL_MINT:
+                continue
+            to_u, from_u = tr.get("toUserAccount", ""), tr.get("fromUserAccount", "")
+            try:
+                amt = float(tr.get("tokenAmount") or 0)
+            except (TypeError, ValueError):
+                amt = 0.0
+            if to_u == wallet and from_u != wallet:
+                flows.append({"mint": mint, "side": "BUY", "amount": amt, "signature": sig, "ts": ts})
+            elif from_u == wallet and to_u != wallet:
+                flows.append({"side": "SELL", "mint": mint, "amount": amt, "signature": sig, "ts": ts})
+    return flows
+
 def get_accounts_owners(addresses: list[str]) -> dict[str, str]:
     """Resolve owner wallet tiap token account via 1 call getMultipleAccounts.
     Return {account_address: owner_wallet}. Gagal -> {} (fail-closed:

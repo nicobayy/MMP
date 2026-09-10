@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS wallet_sightings(
   wallet TEXT, token TEXT, symbol TEXT, ts DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(wallet, token)
 );
+CREATE TABLE IF NOT EXISTS whale_buys(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wallet TEXT, token TEXT, side TEXT DEFAULT 'BUY',
+  amount REAL DEFAULT 0, signature TEXT DEFAULT '', ts DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(wallet, token, signature)
+);
 """
 
 def init(con: sqlite3.Connection):
@@ -112,3 +118,34 @@ def overlap_bonus(holders: list[str], trusted_wallets: list[str], per_wallet: fl
             n += 1
             bonus += per_wallet * (weights.get(h, 1.0) if weights else 1.0)
     return min(bonus, max_bonus), n
+
+def record_whale_flow(con: sqlite3.Connection, wallet: str, token: str, side: str,
+                      amount: float = 0.0, signature: str = "") -> bool:
+    """Simpan 1 arus whale. Return True bila baris baru (dedup via UNIQUE)."""
+    try:
+        cur = con.execute("INSERT OR IGNORE INTO whale_buys(wallet, token, side, amount, signature)"
+                          " VALUES(?,?,?,?,?)", (wallet, token, side, float(amount or 0), signature or ""))
+        con.commit()
+        return cur.rowcount > 0
+    except Exception:
+        return False
+
+def recent_whale_buys(con: sqlite3.Connection, token: str, hours: int = 24) -> int:
+    """Jumlah wallet BERBEDA yang BUY token dalam window jam terakhir."""
+    try:
+        row = con.execute("SELECT COUNT(DISTINCT wallet) FROM whale_buys"
+                          " WHERE token=? AND side='BUY' AND ts >= datetime('now', ?)",
+                          (token, f"-{hours} hours")).fetchone()
+        return int(row[0])
+    except Exception:
+        return 0
+
+def top_watched(con: sqlite3.Connection, limit: int = 10) -> list[str]:
+    """Wallet kandidat prioritas pantau: paling sering tersight (bootstrap
+    saat belum ada trusted)."""
+    try:
+        rows = con.execute("SELECT wallet, COUNT(*) c FROM wallet_sightings"
+                           " GROUP BY wallet ORDER BY c DESC LIMIT ?", (limit,)).fetchall()
+        return [r[0] for r in rows]
+    except Exception:
+        return []

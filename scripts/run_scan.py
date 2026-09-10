@@ -116,9 +116,19 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
             log.debug("tracker overlap skip: %s", str(e)[:160])
             n_overlap = 0
             w_bonus = None
+    # Whale feed: wallet berbeda yang BUY token ini belakangan (Solana saja).
+    whale_buys_n = 0
+    try:
+        mint0 = ((pair.get("baseToken") or {}).get("address")) or ""
+        if mint0 and (pair.get("chainId") or "") == "solana":
+            whale_buys_n = wal.recent_whale_buys(
+                con, mint0, int((cfg.get("tracker") or {}).get("whale_window_h", 24)))
+    except Exception as e:
+        log.debug("whale buys lookup skip: %s", str(e)[:160])
     sig = generate(pair, cfg, permissive=args.permissive, helius_enrich=he,
                    trusted_overlap=n_overlap, trusted_bonus=w_bonus,
-                   kol_callouts=kol_callouts or None, shilling_n=shilling_n)
+                   kol_callouts=kol_callouts or None, shilling_n=shilling_n,
+                   whale_buys_n=whale_buys_n)
     sig.plan = build_plan(sig.price_usd, cfg)
     row = save(con, sig)
     sig_dict = sig.to_dict()

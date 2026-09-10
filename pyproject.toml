@@ -26,6 +26,7 @@ mmp-backtest = "mmp.cli:backtest"
 mmp-scheduler = "mmp.cli:scheduler"
 mmp-callout = "mmp.cli:callout"
 mmp-wallets = "mmp.cli:wallets"
+mmp-whale-watch = "mmp.cli:whale_watch"
 mmp-telegram-test = "mmp.cli:telegram_test"
 mmp-killswitch = "mmp.cli:killswitch"
 

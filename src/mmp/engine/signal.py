@@ -76,7 +76,7 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
              sm_wallets: list | None = None, kol_callouts: list | None = None,
              permissive: bool = False, helius_enrich: dict | None = None,
              trusted_overlap: int = 0, trusted_bonus: float | None = None,
-             shilling_n: int = 0) -> Signal:
+             shilling_n: int = 0, whale_buys_n: int = 0) -> Signal:
     enrichment = enrichment or {}
     # Gabung enrichment Helius (mint/top holders) ke enrichment risk.
     if helius_enrich:
@@ -95,7 +95,9 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
     if sm_wallets:
         sm_score, sm_notes, sm_meta = sm_an.analyze_smart_money(pair, sm_wallets)
     elif (cfg.get("smart_money_auto") or {}).get("enabled", True):
-        sm_score, sm_notes, sm_meta, _ = sma_an.discover(pair, helius_enrich, cfg, trusted_overlap, trusted_bonus)
+        sm_score, sm_notes, sm_meta, _ = sma_an.discover(
+            pair, helius_enrich, cfg, trusted_overlap, trusted_bonus,
+            whale_buys_n=whale_buys_n)
     else:
         sm_score, sm_notes, sm_meta = sm_an.analyze_smart_money(pair, None)
     kol_score, kol_notes, kol_meta = kol_an.analyze_kol(pair, kol_callouts)

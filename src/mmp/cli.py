@@ -19,7 +19,12 @@ def paper(): _run("paper.py")
 def backtest(): _run("backtest.py")
 def scheduler(): _run("scheduler.py")
 def callout(): _run("add_callout.py")
-def wallets(): _run("record_outcome.py")
+def wallets():
+    _run("record_outcome.py")
+
+
+def whale_watch():
+    _run("whale_watch.py")
 def telegram_test(): _run("test_telegram.py")
 def killswitch(): _run("killswitch.py")
 

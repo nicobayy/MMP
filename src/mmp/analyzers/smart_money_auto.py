@@ -9,7 +9,8 @@ from __future__ import annotations
 
 
 def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = None,
-             trusted_overlap: int = 0, trusted_bonus: float | None = None):
+             trusted_overlap: int = 0, trusted_bonus: float | None = None,
+             whale_buys_n: int = 0):
     cfg = cfg or {}
     sm_cfg: dict = cfg.get("smart_money_auto", {})
     max_score: float = float(sm_cfg.get("max_auto_score", 85))
@@ -84,8 +85,16 @@ def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = N
         score += bonus
         notes.append(f"{trusted_overlap}x trusted wallet overlap +{bonus:.1f}")
 
+    # 5. Aktivitas whale real (whale_watch.py): wallet berbeda yang BUY token
+    # ini dalam window jam terakhir. Kecil & dibatasi agar tak mendominasi.
+    if whale_buys_n > 0:
+        wbonus = min(float(whale_buys_n) * 3.0, 9.0)
+        score += wbonus
+        notes.append(f"{whale_buys_n} whale buy(s) window +{wbonus:.1f}")
+
     score = max(0.0, min(max_score, score))
     meta = {"auto_score": round(score, 2), "buy_ratio": round(ratio, 3),
             "vol_liq": round(vl, 2), "top10_pct": top10, "top1_pct": top1,
-            "helius_used": bool(he), "wallets_tracked": 0, "trusted_overlap": trusted_overlap}
+            "helius_used": bool(he), "wallets_tracked": 0, "trusted_overlap": trusted_overlap,
+            "whale_buys": int(whale_buys_n)}
     return round(score, 2), notes, meta, []

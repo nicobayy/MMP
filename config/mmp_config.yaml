@@ -82,6 +82,9 @@ tracker:
   enabled: true
   min_trades: 5
   min_win_rate: 0.60
+  whale_window_h: 24       # window hitung whale buys per token
+  watch_wallets: 10        # max wallet dipantau per run whale_watch
+  watch_sigs: 20           # max signature per wallet per run
 
 telegram:
   cooldown_min: 120        # anti-spam: 1 pair max 1 alert per 2 jam

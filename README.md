@@ -118,6 +118,7 @@ DB & histori di-mount via volume agar tak hilang tiap rebuild.
   whipsaw intra-jam; sentuhan TP+SL satu candle dimenangkan SL).
 
 ## Log keputusan (ditolak/ditunda + syarat revisit)
+
 - **Scraper KOL otomatis: DITOLAK untuk kini.** Butuh kredensial Telegram /
   API X berbayar + rapuh terhadap ToS/layout + risiko flag akun. Manual via
   `add_callout.py` lebih stabil. Revisit bila volume callout manual sudah
@@ -129,6 +130,24 @@ DB & histori di-mount via volume agar tak hilang tiap rebuild.
 - **OHLCV historis: forward-replay dulu.** Repo muda -> belum ada histori PASS
   lama; pola utama = sinyal baru dicatat lalu candle diputar ke depan.
   Kandungan histori gratis dicek via `scripts/ohlcv_check.py --chain --pool`.
+- **HIGH-1 (otomatis vs manual): KEPUTUSAN FINAL.**
+  - Opsi 2 (longgarkan gembok dual-source) DITOLAK permanen. Butuh lebih banyak
+    sinyal = longgarkan ANGKA threshold (bisa dikalibrasi balik pakai data),
+    bukan melubangi verifikasi (dual cross-check, fail-closed, freeze veto).
+  - Opsi 1 DITERIMA sebagai SOP: **Tier-1 Solana = human-in-the-loop by design**
+    (tanpa LP-lock on-chain gratis, 85 tak tertembus tanpa konfirmasi KOL —
+    ini konsekuensi desain konservatif, bukan bug). Tier-2, khususnya EVM,
+    tetap punya jalur full-otomatis.
+  - Opsi 3 BERJALAN PARALEL, termurah dulu: scheduler EVM saja 1-2 minggu
+    (gratis, tanpa key) -> kalibrasi Tier-2 -> bila expectancy positif baru
+    pertimbangkan beli key Helius+Birdeye untuk Solana. Bootstrap KOL manual
+    jalan terus untuk mengisi handle_stats. Geser 75/85 hanya via calibrate.py.
+
+## SOP operasional mingguan
+1. Scheduler EVM: `scheduler.py --chains base,bsc,ethereum --notify --paper`.
+2. Bootstrap KOL: `add_callout.py` tiap callout tepercaya; cek `--list` (win-rate).
+3. Settle + report: `paper.py --settle --report` (wallets ter-feed otomatis).
+4. Kalibrasi: `calibrate.py` per-tier; angka 75/85 tak digeser tanpa buktinya.
 
 ## Konfigurasi
 Lihat `config/mmp_config.yaml`. Kunci:

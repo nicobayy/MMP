@@ -53,15 +53,25 @@ def test_apply_costs():
 def test_honeypot_mapping(monkeypatch):
     class Resp:
         def raise_for_status(self): pass
-        def json(self): return {"isHoneypot": False, "buyTax": 2.5, "sellTax": 3.0}
+        def json(self): return {"honeypotResult": {"isHoneypot": False},
+                                "simulationResult": {"buyTax": 2.5, "sellTax": 3.0},
+                                "summary": {"risk": "low", "flags": []}}
     monkeypatch.setattr(hp.requests, "get", lambda *a, **k: Resp())
     en = hp.build_enrichment("base", "0xabc")
     assert en["buy_tax"] == 2.5 and en["sell_tax"] == 3.0 and "labels" not in en
+    assert en["hp_risk"] == "low"
     class Resp2(Resp):
-        def json(self): return {"isHoneypot": True, "buyTax": 99, "sellTax": 99}
+        def json(self): return {"honeypotResult": {"isHoneypot": True},
+                                "simulationResult": {"buyTax": 99, "sellTax": 99},
+                                "summary": {"risk": "high", "flags": ["high-tax"]}}
     monkeypatch.setattr(hp.requests, "get", lambda *a, **k: Resp2())
     en2 = hp.build_enrichment("bsc", "0xdef")
-    assert "honeypot" in en2["labels"]
+    assert "honeypot" in en2["labels"] and en2["hp_flags"] == ["high-tax"]
+    class RespLegacy(Resp):
+        def json(self): return {"isHoneypot": False, "buyTax": 1.0, "sellTax": 1.0}
+    monkeypatch.setattr(hp.requests, "get", lambda *a, **k: RespLegacy())
+    en3 = hp.build_enrichment("base", "0xabc")
+    assert en3["buy_tax"] == 1.0, "fallback bentuk v1 datar tetap didukung"
     assert hp.build_enrichment("solana", "MINT") == {}
     monkeypatch.setattr(hp.requests, "get", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     assert hp.build_enrichment("base", "0xabc") == {}

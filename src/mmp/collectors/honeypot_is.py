@@ -45,6 +45,21 @@ def check(chain: str, address: str) -> dict:
         log.debug("honeypot.is %s gagal: %s", chain, str(e)[:160])
         return {}
 
+def _v(d: dict, *paths):
+    """Ambil nilai dari beberapa kemungkinan path (v2 bersarang, v1 datar)."""
+    for path in paths:
+        if isinstance(path, str):
+            path = (path,)  # tahan peluru: ("x") tanpa koma = string, bukan tuple
+        cur: object = d
+        try:
+            for key in path:
+                cur = cur[key]  # type: ignore[index]
+            if cur is not None:
+                return cur
+        except (KeyError, TypeError, IndexError):
+            continue
+    return None
+
 def build_enrichment(chain: str, address: str) -> dict:
     """Mapping ke kunci enrichment risk.py. Gagal -> {}."""
     if chain == "solana":
@@ -53,11 +68,18 @@ def build_enrichment(chain: str, address: str) -> dict:
     if not d:
         return {}
     out: dict = {"source_honeypot_is": True}
-    bt, st = _f(d.get("buyTax")), _f(d.get("sellTax"))
+    bt, st = _f(_v(d, ("simulationResult", "buyTax"), ("buyTax",))), \
+        _f(_v(d, ("simulationResult", "sellTax"), ("sellTax",)))
     if bt is not None:
         out["buy_tax"] = round(bt, 2)
     if st is not None:
         out["sell_tax"] = round(st, 2)
-    if d.get("isHoneypot"):
+    if _v(d, ("honeypotResult", "isHoneypot"), ("isHoneypot",)):
         out.setdefault("labels", []).append("honeypot")
+    risk = _v(d, ("summary", "risk"))
+    if risk is not None:
+        out["hp_risk"] = str(risk)
+    flags = _v(d, ("summary", "flags"), ("flags",)) or []
+    if flags:
+        out["hp_flags"] = list(flags)
     return out

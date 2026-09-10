@@ -58,6 +58,9 @@ def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = N
         score += 5; notes.append("mint renounced +")
     elif he.get("mint_renounced") is False:
         score -= 10; notes.append("mint masih aktif (mintable)")
+    labels = [str(x).lower() for x in (he.get("labels") or [])]
+    if "freezable-risk" in labels:
+        score -= 10; notes.append("freeze authority aktif (bisa bekukan holder)")
 
     # 4. Bonus wallet terpercaya (dari tracker DB, bukan klaim kosong).
     # trusted_bonus = jumlah confidence*5 per wallet overlap (proporsional);

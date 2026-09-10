@@ -6,8 +6,11 @@ Rate-limit ketat -> semua failure = {} (graceful).
 Docs: https://honeypot.is/
 """
 from __future__ import annotations
+import logging
 import requests
 from . import meter as _meter
+
+log = logging.getLogger(__name__)
 
 BASE = "https://api.honeypot.is/v2"
 TIMEOUT = 15
@@ -28,7 +31,8 @@ def check(chain: str, address: str) -> dict:
         r = requests.get(f"{BASE}/IsHoneypot", params={"address": address, "chainID": cid}, timeout=TIMEOUT)
         r.raise_for_status()
         return r.json() or {}
-    except Exception:
+    except Exception as e:
+        log.debug("honeypot.is %s gagal: %s", chain, str(e)[:160])
         return {}
 
 def build_enrichment(chain: str, address: str) -> dict:

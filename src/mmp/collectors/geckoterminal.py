@@ -3,9 +3,12 @@ Dipakai sebagai universe fallback EVM + cross-check likuiditas/volume.
 Docs: https://api.geckoterminal.com/
 """
 from __future__ import annotations
+import logging
 import requests
 from . import cache as _cache
 from . import meter as _meter
+
+log = logging.getLogger(__name__)
 
 BASE = "https://api.geckoterminal.com/api/v2"
 TIMEOUT = 15
@@ -29,7 +32,8 @@ def get_top_pools(chain: str, limit: int = 10) -> list[dict]:
         out = (data.get("data") or [])[:limit]
         _cache.put(key, out, 300)
         return out
-    except Exception:
+    except Exception as e:
+        log.debug("geckoterminal %s gagal: %s", chain, str(e)[:160])
         return []
 
 def get_token_pools(chain: str, address: str, limit: int = 5) -> list[dict]:
@@ -37,7 +41,8 @@ def get_token_pools(chain: str, address: str, limit: int = 5) -> list[dict]:
     try:
         data = _get(f"/networks/{net}/tokens/{address}/pools?page=1")
         return (data.get("data") or [])[:limit]
-    except Exception:
+    except Exception as e:
+        log.debug("geckoterminal token pools gagal: %s", str(e)[:160])
         return []
 
 def _f(x, default: float = 0.0) -> float:

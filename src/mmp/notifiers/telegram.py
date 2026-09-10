@@ -20,6 +20,7 @@ def format_signal(s) -> str:
         f"Conf: <b>{d['confidence']}</b> (min {d['threshold']})",
         f"Harga: ${_esc(d['price_usd'])} | DEX: {_esc(d['dex'])}",
         f"MCap: {_esc((d.get('meta') or {}).get('mcap'))} | Liq: ${_esc(((d.get('meta') or {}).get('liquidity') or {}).get('liquidity_usd'))}",
+        f"Data: {_esc((d.get('meta') or {}).get('data_grade', '?'))} | Dual: {_esc(((d.get('meta') or {}).get('dual') or {}).get('note', '-'))}",
         f"SM: {_esc(sm.get('auto_score', ''))} (overlap trusted: {_esc(sm.get('trusted_overlap', 0))})",
         f"Alasan: {_esc(d['reason'])}",
     ]

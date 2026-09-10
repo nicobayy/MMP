@@ -108,10 +108,16 @@ DB & histori di-mount via volume agar tak hilang tiap rebuild.
 
 ## Konfigurasi
 Lihat `config/mmp_config.yaml`. Kunci:
-- `signal.min_confidence: 85` — ambang PASS.
-- `risk.*` — veto fatal.
-- `liquidity.*` — syarat exit.
-- `weights.*` — bobot scoring.
+- `signal.min_confidence: 85` — TIER-1 (size penuh).
+- `tiers.tier2_min: 75` — TIER-2 (size ½, paper-wajib) khusus sinyal 75–84
+  dengan **dual-source yang setuju**: Solana = Helius+Birdeye (mcap/liq beda
+  max `dual_max_divergence: 3x`), EVM = DexScreener+honeypot.is (tax diketahui,
+  bukan honeypot). Konflik angka antar-sumber = bukan dual = REJECT.
+- `risk.*` — veto fatal (`mintable-risk`, `freezable-risk`, `honeypot` otomatis
+  veto; `veto_on_blind: true` = buta data ikut veto, default false).
+- Setiap sinyal membawa `meta.data_grade` (COMPLETE/PARTIAL/BLIND) + `meta.dual`.
+- `portfolio.*` — guard max open/per-chain/daily-stop + kill switch `data/STOP`.
+- CI otomatis di `.github/workflows/ci.yml` (compile + pytest + secret hygiene).
 
 ## Roadmap
 - [x] Collector GeckoTerminal (EVM fallback + cross-check)

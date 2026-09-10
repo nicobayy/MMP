@@ -1,7 +1,8 @@
 """Gate: PASS Tier-1 / Tier-2 / REJECT.
 TIER-1 = keyakinan penuh (>=85). TIER-2 = otomatis-penuh-tanpa-KOL (75-84)
-dengan syarat dual-source (Helius+Birdeye setuju), size setengah, paper-wajib.
-Veto tetap membunuh semua tier.
+dengan syarat dual-source (dua sumber independen hadir DAN setuju:
+Solana = Helius+Birdeye, EVM = DexScreener+honeypot.is).
+Size setengah, paper-wajib. Veto tetap membunuh semua tier.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ def decide(vetoes: list[str], confidence: float, cfg: dict,
     if confidence >= t2:
         if tiers.get("tier2_require_dual_source", True) and not dual_source:
             return "REJECT", (f"confidence {confidence} < {t1} "
-                              "(butuh dual-source Helius+Birdeye utk TIER-2)"), t1, 0
+                              "(syarat TIER-2 tak terpenuhi, lihat meta.dual)"), t1, 0
         return "PASS", (f"confidence {confidence} >= {t2} "
                         "(TIER-2: size 1/2, paper-wajib)"), t2, 2
     return "REJECT", f"confidence {confidence} < {t2}", t1, 0

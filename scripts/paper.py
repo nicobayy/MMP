@@ -13,17 +13,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from mmp.config import load_config, db_path
-from mmp.collectors import dexscreener as dex
+from mmp.collectors import prices as pxr
 from mmp.storage.store import connect
 from mmp.storage import paper as pstore
 from mmp.backtest.engine import settle, summarize, apply_costs
 
-def live_price(chain: str, pair_addr: str) -> float:
-    try:
-        p = dex.get_pair(chain, pair_addr)
-        return float((p or {}).get("priceUsd") or 0)
-    except Exception:
-        return 0.0
+def live_price(chain: str, pair_addr: str, token: str = "") -> float:
+    px, _src = pxr.resolve_price(chain, token, pair_addr)
+    return px
 
 def age_hours(opened_ts: str) -> float:
     try:
@@ -61,7 +58,7 @@ def main():
     if args.settle:
         n = 0
         for o in pstore.list_open(con):
-            px = live_price(o["chain"], o["pair_addr"])
+            px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
             if not px:
                 print(f"- skip {o['symbol']}: harga tak tersedia"); continue
             timed_out = age_hours(o.get("opened_ts", "")) >= timeout_h

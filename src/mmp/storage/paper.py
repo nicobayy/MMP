@@ -37,8 +37,8 @@ def open_from_signal(con: sqlite3.Connection, sig: dict, risk_pct: float = 1.0) 
     return int(cur.lastrowid)
 
 def list_open(con: sqlite3.Connection) -> list[dict]:
-    rows = con.execute("SELECT id, symbol, chain, pair_addr, entry, sl, tp, opened_ts FROM paper_positions WHERE status='OPEN'").fetchall()
-    return [{"id": r[0], "symbol": r[1], "chain": r[2], "pair_addr": r[3], "entry": r[4], "sl": r[5], "tp": r[6], "opened_ts": r[7]} for r in rows]
+    rows = con.execute("SELECT id, symbol, chain, token, pair_addr, entry, sl, tp, opened_ts FROM paper_positions WHERE status='OPEN'").fetchall()
+    return [{"id": r[0], "symbol": r[1], "chain": r[2], "token": r[3], "pair_addr": r[4], "entry": r[5], "sl": r[6], "tp": r[7], "opened_ts": r[8]} for r in rows]
 
 def has_open(con: sqlite3.Connection, pair_addr: str) -> bool:
     """Dedup: 1 pair = max 1 posisi OPEN (cegah tumpukan tiap scan)."""

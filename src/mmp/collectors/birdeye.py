@@ -4,9 +4,12 @@ Semua failure -> {} (graceful, jangan bunuh scan).
 Docs: https://docs.birdeye.so/
 """
 from __future__ import annotations
+import logging
 import os
 import requests
 from . import meter as _meter
+
+log = logging.getLogger(__name__)
 
 BASE = "https://public-api.birdeye.so"
 TIMEOUT = 15
@@ -28,13 +31,15 @@ def _get(path: str, params: dict | None = None):
 def get_token_overview(mint: str) -> dict:
     try:
         return (_get("/defi/token_overview", {"address": mint}) or {}).get("data") or {}
-    except Exception:
+    except Exception as e:
+        log.warning("birdeye overview gagal: %s", str(e)[:160])
         return {}
 
 def get_price(mint: str) -> float:
     try:
         return float((_get("/defi/price", {"address": mint}) or {}).get("data", {}).get("value") or 0)
-    except Exception:
+    except Exception as e:
+        log.warning("birdeye price gagal: %s", str(e)[:160])
         return 0.0
 
 def build_enrichment(mint: str) -> dict:

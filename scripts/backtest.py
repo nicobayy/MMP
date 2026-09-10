@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from mmp.config import load_config, db_path
-from mmp.collectors import dexscreener as dex
+from mmp.collectors import prices as pxr
 from mmp.storage.store import connect
 from mmp.backtest.engine import settle, summarize, apply_costs
 
@@ -32,18 +32,13 @@ def main():
         return
     outcomes = []
     for sym, chain, token, pair_addr, entry, _ in rows:
-        try:
-            pairs = dex.get_token_pairs(chain, token)
-            best = dex.pick_best_pair(pairs) if pairs else None
-            now = float((best or {}).get("priceUsd") or 0)
-        except Exception:
-            now = 0.0
+        now, src = pxr.resolve_price(chain, token, pair_addr)
         if not now:
             continue
         r = settle(entry, now, sl_pct, tp_pct)
         r["pnl_pct"] = apply_costs(r["pnl_pct"], slip, fee)
         outcomes.append({"symbol": sym, **r})
-        print(f"- {sym}: entry=${entry} now=${now} -> {r['status']} {r['pnl_pct']}% (net)")
+        print(f"- {sym}: entry=${entry} now=${now} ({src}) -> {r['status']} {r['pnl_pct']}% (net)")
     print(json.dumps(summarize(outcomes), indent=2))
 
 if __name__ == "__main__":

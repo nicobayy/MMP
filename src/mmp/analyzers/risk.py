@@ -75,6 +75,31 @@ def check_hard_veto(pair: dict, cfg: dict, enrichment: dict | None = None) -> li
     return reasons
 
 
+def data_grade(pair: dict, enrichment: dict | None = None) -> tuple[str, list[str]]:
+    """Mutu data keamanan: COMPLETE / PARTIAL / BLIND + field yang hilang.
+    BLIND = tak ada sumber keamanan yang berkontribusi sama sekali.
+    Bedakan 'berisiko' (skor rendah) dari 'buta' (tak ada data) agar audit jelas.
+    """
+    en = enrichment or {}
+    chain = pair.get("chainId", "")
+    missing: list[str] = []
+    if chain == "solana":
+        if "mint_renounced" not in en and "top10_pct" not in en and en.get("holders") is None:
+            return "BLIND", ["helius", "birdeye"]
+        if "mint_renounced" not in en:
+            missing.append("mint/dist (helius)")
+        if en.get("holders") is None:
+            missing.append("holders (birdeye)")
+    else:
+        if not en.get("source_honeypot_is"):
+            return "BLIND", ["honeypot.is"]
+        if en.get("buy_tax") is None or en.get("sell_tax") is None:
+            missing.append("tax")
+    if not en:
+        return "BLIND", ["semua sumber"]
+    return ("COMPLETE", []) if not missing else ("PARTIAL", missing)
+
+
 def risk_safety_score(pair: dict, enrichment: dict | None = None) -> tuple[float, list[str]]:
     """Skor 0-100 untuk keamanan. Penalti bila data penting belum ada."""
     enrichment = enrichment or {}

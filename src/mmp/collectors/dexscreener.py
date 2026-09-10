@@ -5,8 +5,11 @@ from __future__ import annotations
 import requests
 import time
 from typing import Any
+import logging
 from . import cache as _cache
 from . import meter as _meter
+
+log = logging.getLogger(__name__)
 
 BASE = "https://api.dexscreener.com"
 TIMEOUT = 15
@@ -23,6 +26,7 @@ def _get(path: str, retries: int = RETRIES) -> Any:
         except Exception as e:
             last = e
             time.sleep(1.5 * (attempt + 1))
+    log.error("dexscreener %s gagal setelah retry: %s", path, str(last)[:160])
     raise last  # type: ignore[misc]
 
 def get_token_pairs(chain: str, token_address: str) -> list[dict]:

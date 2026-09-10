@@ -2,7 +2,10 @@
 DexScreener chainId: solana, ethereum, bsc, base, arbitrum.
 """
 from __future__ import annotations
+import logging
 from . import dexscreener as dex
+
+log = logging.getLogger(__name__)
 
 PRIORITY_DEFAULT = ["solana", "ethereum", "bsc", "base", "arbitrum"]
 
@@ -38,6 +41,7 @@ def universe_from_boosts(boosts: list[dict], cfg: dict, limit_per_chain: int | N
             if best:
                 pairs.append(best)
                 counts[chain] = counts.get(chain, 0) + 1
-        except Exception:
+        except Exception as e:
+            log.debug("universe skip %s (%s): %s", addr, chain, str(e)[:160])
             continue
     return filter_and_sort(pairs, cfg)

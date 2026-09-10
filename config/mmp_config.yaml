@@ -11,7 +11,9 @@ tiers:
   # veto tetap membunuh semua tier. Risiko dijaga via size 1/2 + paper-wajib.
   tier2_min: 75
   tier2_size_pct: 0.5        # setengah dari paper.risk_pct (0.5% modal)
-  tier2_require_dual_source: true  # Helius DAN Birdeye harus hadir & setuju
+  tier2_require_dual_source: true  # dua sumber independen harus hadir DAN setuju
+  dual_max_divergence: 3.0   # mcap/liq antar-sumber boleh beda max 3x, lebih = konflik
+  tier2_evm_tax_required: true  # EVM: tax honeypot.is wajib diketahui
 
 weights:
   # total harus 100
@@ -33,7 +35,8 @@ risk:
   min_lp_lock_pct: 70         # bila data tersedia
   max_fdv_to_mcap_ratio: 4.0
   min_pair_age_minutes: 60    # tolak token < 1 jam (anti-rug cepat) — kecuali permissive
-  blocked_labels: ["honeypot", "mintable-risk", "proxy-risk"]
+  blocked_labels: ["honeypot", "mintable-risk", "freezable-risk", "proxy-risk"]
+  veto_on_blind: false       # true = buta data keamanan -> VETO (default: penalti+cap saja)
 
 liquidity:
   min_liquidity_usd: 30000

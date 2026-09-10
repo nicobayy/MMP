@@ -32,6 +32,39 @@ class Signal:
 
     def to_dict(self): return asdict(self)
 
+def _dual_check(pair: dict, enrichment: dict, cfg: dict) -> tuple[bool, str]:
+    """Dual-source = dua sumber independen hadir DAN nilainya konsisten.
+    Solana: Helius (mint/dist) + Birdeye (holders/mcap/liq).
+    EVM: DexScreener + honeypot.is (tax diketahui, bukan honeypot).
+    Konflik angka antar-sumber = data tak bisa dipercaya -> bukan dual.
+    """
+    tiers = cfg.get("tiers") or {}
+    tol = float(tiers.get("dual_max_divergence", 3.0))
+    en = enrichment or {}
+    if (pair.get("chainId") or "") == "solana":
+        if "mint_renounced" not in en:
+            return False, "tanpa Helius"
+        if en.get("holders") is None:
+            return False, "tanpa Birdeye holders"
+        try:
+            checks = (("mcap", float(pair.get("marketCap") or 0), float(en.get("birdeye_mcap") or 0)),
+                      ("liq", float(((pair.get("liquidity") or {}).get("usd")) or 0),
+                       float(en.get("birdeye_liq") or 0)))
+        except (TypeError, ValueError):
+            return False, "angka tak valid"
+        for name, a, b in checks:
+            if a > 0 and b > 0 and max(a, b) / min(a, b) > tol:
+                return False, f"konflik {name} {max(a, b) / min(a, b):.1f}x > {tol}x"
+        return True, "Helius+Birdeye setuju"
+    if not en.get("source_honeypot_is"):
+        return False, "tanpa honeypot.is"
+    if "honeypot" in [str(x).lower() for x in (en.get("labels") or [])]:
+        return False, "honeypot"
+    if tiers.get("tier2_evm_tax_required", True) and \
+            (en.get("buy_tax") is None or en.get("sell_tax") is None):
+        return False, "tax EVM tak diketahui"
+    return True, "DexScreener+honeypot.is setuju"
+
 def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
              sm_wallets: list | None = None, kol_callouts: list | None = None,
              permissive: bool = False, helius_enrich: dict | None = None,
@@ -45,6 +78,9 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
             merged.setdefault(k, v)
         enrichment = merged
     vetoes = risk_an.check_hard_veto(pair, cfg, enrichment)
+    grade, grade_missing = risk_an.data_grade(pair, enrichment)
+    if grade == "BLIND" and (cfg.get("risk") or {}).get("veto_on_blind", False):
+        vetoes = vetoes + [f"DATA_BLIND: tanpa data keamanan ({', '.join(grade_missing)})"]
 
     liq_score, liq_notes, liq_meta = liq_an.analyze_exit(pair, cfg)
     safe_score, safe_notes = risk_an.risk_safety_score(pair, enrichment)
@@ -73,9 +109,8 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
     else:
         confidence, cap_notes = sc.apply_conservative_rules(scores, cfg)
 
-    verdict, reason, threshold, tier = gt.decide(
-        vetoes, confidence, cfg, permissive,
-        dual_source=("mint_renounced" in enrichment and enrichment.get("holders") is not None))
+    dual_ok, dual_note = _dual_check(pair, enrichment, cfg)
+    verdict, reason, threshold, tier = gt.decide(vetoes, confidence, cfg, permissive, dual_source=dual_ok)
 
     base = pair.get("baseToken") or {}
     price = float(pair.get("priceUsd") or 0)
@@ -90,5 +125,7 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
                "sm": sm_notes, "kol": kol_notes},
         meta={"liquidity": liq_meta, "token": tm_meta, "sm": sm_meta, "kol": kol_meta,
               "mcap": pair.get("marketCap"), "fdv": pair.get("fdv"),
-              "url": pair.get("url")},
+              "url": pair.get("url"),
+              "dual": {"ok": dual_ok, "note": dual_note},
+              "data_grade": risk_an.data_grade(pair, enrichment)[0]},
     )

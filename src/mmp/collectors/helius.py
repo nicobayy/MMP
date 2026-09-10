@@ -3,9 +3,12 @@ Fokus hemat kredit: sedikit RPC call, semua failure -> {} (graceful).
 Docs: https://docs.helius.dev/
 """
 from __future__ import annotations
+import logging
 import os
 import requests
 from . import meter as _meter
+
+log = logging.getLogger(__name__)
 
 TIMEOUT = 15
 
@@ -42,7 +45,8 @@ def get_mint_info(mint: str) -> dict:
             "mint_authority": parsed.get("mintAuthority"),
             "freeze_authority": parsed.get("freezeAuthority"),
         }
-    except Exception:
+    except Exception as e:
+        log.warning("helius get_mint_info gagal: %s", str(e)[:160])
         return {}
 
 def get_top_holders(mint: str, limit: int = 20) -> list[dict]:
@@ -51,7 +55,8 @@ def get_top_holders(mint: str, limit: int = 20) -> list[dict]:
         res = rpc("getTokenLargestAccounts", [mint])
         vals = (res or {}).get("value", [])[:limit]
         return [{"address": v.get("address"), "amount_raw": float(v.get("amount", 0))} for v in vals]
-    except Exception:
+    except Exception as e:
+        log.warning("helius get_top_holders gagal: %s", str(e)[:160])
         return []
 
 def get_accounts_owners(addresses: list[str]) -> dict[str, str]:
@@ -65,7 +70,8 @@ def get_accounts_owners(addresses: list[str]) -> dict[str, str]:
     try:
         res = rpc("getMultipleAccounts", [addresses, {"encoding": "jsonParsed"}])
         vals = (res or {}).get("value", [])
-    except Exception:
+    except Exception as e:
+        log.warning("helius getMultipleAccounts gagal: %s", str(e)[:160])
         return {}
     out: dict[str, str] = {}
     for addr, info in zip(addresses, vals):
@@ -110,6 +116,10 @@ def build_enrichment(mint: str, cfg: dict | None = None) -> dict:
         else:
             out["mint_renounced"] = False
             out.setdefault("labels", []).append("mintable-risk")
+        # Freeze authority aktif = red flag setara mint authority:
+        # pemilik bisa membekukan akun holder kapan saja (rug-pull vector).
+        if mi.get("freeze_authority") is not None:
+            out.setdefault("labels", []).append("freezable-risk")
         # holders exact count butuh indexing berat -> jangan dipaksa, biarkan None
         # agar risk.py memberi penalti skor (konservatif) bukan veto.
     except Exception:

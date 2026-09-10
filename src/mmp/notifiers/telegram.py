@@ -63,14 +63,42 @@ def format_summary(n_pass: int, n_reject: int, passes: list) -> str:
 def creds() -> tuple[str, str]:
     return os.getenv("TELEGRAM_BOT_TOKEN", "").strip(), os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-def send_telegram(text: str) -> bool:
+def send_telegram(text: str, retries: int = 2) -> bool:
+    """Kirim pesan Telegram dgn retry + hormati rate-limit 429 (Retry-After).
+
+    Tanpa kredensial -> False (graceful, sinyal tetap di-print + SQLite).
+    429/5xx = transient -> tunggu lalu ulangi; 4xx lain = permanen -> False.
+    """
     token, chat = creds()
     if not token or not chat:
         return False
-    try:
-        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                          json={"chat_id": chat, "text": text, "parse_mode": "HTML",
-                                "disable_web_page_preview": True}, timeout=TIMEOUT)
-        return r.ok
-    except Exception:
-        return False
+    last: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                              json={"chat_id": chat, "text": text, "parse_mode": "HTML",
+                                    "disable_web_page_preview": True}, timeout=TIMEOUT)
+            if r.ok:
+                return True
+            if r.status_code == 429:
+                wait = 2.0 * (attempt + 1)
+                try:
+                    wait = max(wait, float((r.json() or {}).get("parameters", {}).get("retry_after", wait)))
+                except Exception:
+                    pass
+                import time as _t
+                _t.sleep(min(wait, 30))
+                continue
+            if 500 <= r.status_code < 600:
+                import time as _t
+                _t.sleep(1.5 * (attempt + 1))
+                continue
+            return False
+        except Exception as e:
+            last = e
+            import time as _t
+            _t.sleep(1.5 * (attempt + 1))
+    if last is not None:
+        import logging as _lg
+        _lg.getLogger(__name__).debug("telegram gagal: %s", str(last)[:160])
+    return False

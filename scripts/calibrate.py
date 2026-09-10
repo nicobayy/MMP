@@ -53,8 +53,17 @@ def main():
             continue
         sl_pct = abs((entry - (sl or entry * 0.85)) / entry * 100)
         tp_pct = abs(((tp or entry * 1.3) - entry) / entry * 100)
-        sig = con.execute("SELECT payload FROM signals WHERE token=? AND verdict='PASS'"
-                          " ORDER BY ABS(price-?) LIMIT 1", (token, entry)).fetchone()
+        # Join via signal_id bila ada (paper baru), fallback heuristik token+harga (paper lama).
+        sig = None
+        try:
+            prow = con.execute("SELECT signal_id FROM paper_positions WHERE id=?", (pid,)).fetchone()
+            if prow and prow[0]:
+                sig = con.execute("SELECT payload FROM signals WHERE id=?", (prow[0],)).fetchone()
+        except Exception:
+            sig = None
+        if not sig:
+            sig = con.execute("SELECT payload FROM signals WHERE token=? AND verdict='PASS'"
+                              " ORDER BY ABS(price-?) LIMIT 1", (token, entry)).fetchone()
         try:
             conf = float(json.loads((sig or ["{}"])[0]).get("confidence", 0))
         except Exception:

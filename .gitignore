@@ -4,7 +4,11 @@ __pycache__/
 .env
 venv/
 data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
 data/*.html
+data/scheduler.lock
 *.egg-info/
 dist/
 build/

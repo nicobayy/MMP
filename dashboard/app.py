@@ -21,7 +21,7 @@ st.caption("Precision-first • Solana prioritas, multi-chain • Konservatif: R
 def load_df(path: str) -> pd.DataFrame:
     con = sqlite3.connect(path)
     try:
-        df = pd.read_sql_query("SELECT id, ts, verdict, symbol, chain, token, pair_addr, price, confidence, reason, payload FROM signals ORDER BY id DESC LIMIT 1000", con)
+        df = pd.read_sql_query("SELECT id, ts, verdict, symbol, chain, token, pair_addr, price, confidence, reason, payload FROM signals ORDER BY id DESC LIMIT 500", con)
     except Exception:
         df = pd.DataFrame()
     con.close()

@@ -32,7 +32,12 @@ def _get(path: str, retries: int = RETRIES) -> Any:
             return r.json()
         except Exception as e:
             last = e
-            time.sleep(1.5 * (attempt + 1))
+            if attempt >= retries:
+                break
+            # Backoff + jitter di LUAR semaphore (guard sudah lepas) agar tak
+            # menahan worker ThreadPool lain selama tidur.
+            import random as _r
+            time.sleep(1.5 * (attempt + 1) + _r.uniform(0, 0.5))
     log.error("dexscreener %s gagal setelah retry: %s", path, str(last)[:160])
     raise last  # type: ignore[misc]
 

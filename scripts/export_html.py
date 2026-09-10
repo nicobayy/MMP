@@ -23,7 +23,7 @@ def main():
         return
     trs = "\n".join(
         f"<tr><td>{r[0]}</td><td>{html.escape(str(r[1]))}</td><td>{html.escape(str(r[2]))}</td>"
-        f"<td>{html.escape(str(r[3]))}</td><td>{html.escape(str(r[4]))}</td><td>{r[5]}</td><td>{r[6]}</td>"
+        f"<td>{html.escape(str(r[3]))}</td><td>{html.escape(str(r[4]))}</td><td>{html.escape(str(r[5]))}</td><td>{html.escape(str(r[6]))}</td>"
         f"<td>{html.escape(str(r[7] or ''))[:160]}</td></tr>" for r in rows)
     out.write_text(f"""<!doctype html><meta charset=utf-8><title>MMP Dashboard</title>
 <style>body{{font-family:system-ui;background:#0b0e14;color:#e6edf3;padding:24px}}table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #30363d;padding:6px 8px;font-size:13px}}th{{background:#161b22}}</style>

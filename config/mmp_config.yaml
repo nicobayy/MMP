@@ -83,6 +83,7 @@ tracker:
   min_trades: 5
   min_win_rate: 0.60
   whale_window_h: 24       # window hitung whale buys per token
+  whale_min_sol: 0.5       # buy < ini SOL diabaikan (filter debu); 0 = mati
   watch_wallets: 10        # max wallet dipantau per run whale_watch
   watch_sigs: 20           # max signature per wallet per run
 

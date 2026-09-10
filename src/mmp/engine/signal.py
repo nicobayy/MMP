@@ -120,6 +120,7 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
 
     dual_ok, dual_note = _dual_check(pair, enrichment, cfg)
     verdict, reason, threshold, tier = gt.decide(vetoes, confidence, cfg, permissive, dual_source=dual_ok)
+    checklist = risk_an.security_checklist(pair, enrichment, {"ok": dual_ok, "note": dual_note}, grade)
 
     base = pair.get("baseToken") or {}
     price = float(pair.get("priceUsd") or 0)
@@ -136,5 +137,6 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
               "mcap": pair.get("marketCap"), "fdv": pair.get("fdv"),
               "url": pair.get("url"),
               "dual": {"ok": dual_ok, "note": dual_note},
-              "data_grade": risk_an.data_grade(pair, enrichment)[0]},
+              "data_grade": risk_an.data_grade(pair, enrichment)[0],
+              "checklist": checklist},
     )

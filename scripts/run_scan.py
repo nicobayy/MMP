@@ -82,7 +82,7 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
         hp_status = "no_tax"
     else:
         hp_status = "ok"
-    # KOL confluence nyata dari DB: callout 48 jam + flag proven + cek shilling.
+    # KOL confluence nyata dari DB: bobot reputasi per handle + cek shilling.
     kol_callouts: list = []
     shilling_n = 0
     try:
@@ -92,9 +92,12 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
         kol_callouts = koldb.recent_for_token(con, mint, int(kol_cfg.get("window_hours", 48)))
         for c in kol_callouts:
             try:
-                c["proven"] = bool(koldb.handle_stats(con, c.get("handle", "")).get("proven"))
+                w, wlabel = koldb.handle_weight(con, c.get("handle", ""), c.get("trust", "trusted"))
+                c["weight"] = w
+                c["wlabel"] = wlabel
             except Exception:
-                c["proven"] = False
+                c["weight"] = 0.0
+                c["wlabel"] = "unknown"
         shilling_n = koldb.recent_handles_count(con, mint, int(kol_cfg.get("shill_window_hours", 6)))
     except Exception as e:
         log.debug("kol lookup skip: %s", str(e)[:160])
@@ -116,13 +119,17 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
             log.debug("tracker overlap skip: %s", str(e)[:160])
             n_overlap = 0
             w_bonus = None
-    # Whale feed: wallet berbeda yang BUY token ini belakangan (Solana saja).
+    # Whale feed: wallet RANKED berbeda yang BUY relevan (min SOL) belakangan.
     whale_buys_n = 0
     try:
         mint0 = ((pair.get("baseToken") or {}).get("address")) or ""
         if mint0 and (pair.get("chainId") or "") == "solana":
+            tr_cfg = cfg.get("tracker") or {}
             whale_buys_n = wal.recent_whale_buys(
-                con, mint0, int((cfg.get("tracker") or {}).get("whale_window_h", 24)))
+                con, mint0, int(tr_cfg.get("whale_window_h", 24)),
+                trusted_only=True, min_trades=int(tr_cfg.get("min_trades", 5)),
+                min_win_rate=float(tr_cfg.get("min_win_rate", 0.6)),
+                min_sol=float(tr_cfg.get("whale_min_sol", 0.5)))
     except Exception as e:
         log.debug("whale buys lookup skip: %s", str(e)[:160])
     sig = generate(pair, cfg, permissive=args.permissive, helius_enrich=he,

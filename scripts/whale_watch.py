@@ -52,10 +52,11 @@ def main():
                 continue
             txns = hel.parse_enhanced(sigs)
             for f in hel.wallet_token_flows(w, txns):
-                if wal.record_whale_flow(con, w, f["mint"], f["side"], f["amount"], f["signature"]):
+                if wal.record_whale_flow(con, w, f["mint"], f["side"], f["amount"],
+                                         f["signature"], f.get("sol_spent", 0.0)):
                     n_new += 1
                     if f["side"] == "BUY":
-                        print(f"  BUY {w[:8]}.. -> {f['mint'][:8]}.. amt={f['amount']}")
+                        print(f"  BUY {w[:8]}.. -> {f['mint'][:8]}.. amt={f['amount']} sol~{f.get('sol_spent', 0)}")
             print(f"- {w[:12]}..: {len(sigs)} sigs, {len(txns)} parsed")
         except Exception as e:
             print(f"- {w[:12]}..: skip ({str(e)[:120]})")

@@ -23,27 +23,49 @@ CREATE TABLE IF NOT EXISTS kol_callouts(
 
 def init(con: sqlite3.Connection):
     con.execute(SCHEMA)
+    for col in ("trust TEXT DEFAULT 'untrusted'", "reason TEXT DEFAULT ''"):
+        try:
+            con.execute(f"ALTER TABLE kol_callouts ADD COLUMN {col}")
+        except Exception:
+            pass
     con.commit()
 
+TRUST_LEVELS = ("trusted", "trial", "untrusted")
+REASONS = ("launch", "listing", "whale_buy", "rotation", "narrative", "other")
+
+def _trust_of(row_trust: str, legacy_trusted: int) -> str:
+    if row_trust in TRUST_LEVELS:
+        return row_trust
+    return "trusted" if legacy_trusted else "untrusted"
+
 def add_callout(con: sqlite3.Connection, token: str, symbol: str = "", chain: str = "solana",
-                source: str = "telegram", handle: str = "", trusted: bool = False, note: str = "") -> int:
+                source: str = "telegram", handle: str = "", trusted: bool = False, note: str = "",
+                trust: str = "", reason: str = "") -> int:
+    trust = trust if trust in TRUST_LEVELS else ("trusted" if trusted else "untrusted")
+    reason = reason if reason in REASONS else ("other" if reason else "")
     cur = con.execute(
-        "INSERT INTO kol_callouts(source, handle, token, symbol, chain, trusted, note)"
-        " VALUES(?,?,?,?,?,?,?)",
-        (source, handle, token, symbol, chain, 1 if trusted else 0, note))
+        "INSERT INTO kol_callouts(source, handle, token, symbol, chain, trusted, note, trust, reason)"
+        " VALUES(?,?,?,?,?,?,?,?,?)",
+        (source, handle, token, symbol, chain, 1 if trust == "trusted" else 0, note, trust, reason))
     con.commit()
     rid = cur.lastrowid
     return int(rid) if rid is not None else 0
 
 def recent_for_token(con: sqlite3.Connection, token: str, hours: int = 48) -> list[dict]:
+    """Butuh init() dulu (migrasi kolom trust/reason)."""
     try:
         rows = con.execute(
-            "SELECT source, handle, trusted, ts FROM kol_callouts"
+            "SELECT source, handle, trusted, ts, trust, reason FROM kol_callouts"
             " WHERE token=? AND ts >= datetime('now', ?)",
             (token, f"-{hours} hours")).fetchall()
     except Exception:
         return []
-    return [{"source": r[0], "handle": r[1], "trusted": bool(r[2]), "ts": r[3]} for r in rows]
+    out = []
+    for r in rows:
+        trust = _trust_of(r[4] or "", r[2])
+        out.append({"source": r[0], "handle": r[1], "trusted": trust == "trusted",
+                    "trust": trust, "reason": r[5] or "", "ts": r[3]})
+    return out
 
 def recent_handles_count(con: sqlite3.Connection, token: str, hours: int = 6) -> int:
     """Jumlah handle BERBEDA yang callout token dalam window pendek.
@@ -82,3 +104,28 @@ def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
     wr = round(wins / n, 3) if n else 0.0
     return {"calls": len(tokens), "wins": wins, "losses": losses, "win_rate": wr,
             "proven": bool(n >= 3 and wr >= 0.6)}
+
+TRUST_CEIL = {"trusted": 1.5, "trial": 1.0, "untrusted": 0.5}
+
+def handle_weight(con: sqlite3.Connection, handle: str, trust: str = "trusted") -> tuple[float, str]:
+    """Bobot reputasi handle: DIBAYAR track record, bukan popularitas.
+    - outcome: proven (n>=3, wr>=0.6) 1.5 / baru (n<3) 0.5 / normal 1.0 /
+      gagal (n>=3, wr<0.4) 0.0 + downranked (diabaikan total).
+    - plafon tier input: trusted 1.5 / trial 1.0 / untrusted 0.5.
+    Return (bobot, label). Precision (win_rate) vs volume (calls) terpisah di stats.
+    """
+    st = handle_stats(con, handle)
+    n = st["wins"] + st["losses"]
+    if n == 0:
+        base, why = 0.5, "baru (belum ada outcome)"
+    elif n >= 3 and st["win_rate"] >= 0.6:
+        base, why = 1.5, f"proven {st['win_rate']:.0%} dari {n}"
+    elif n >= 3 and st["win_rate"] < 0.4:
+        return 0.0, f"downranked {st['win_rate']:.0%} dari {n} (diabaikan)"
+    else:
+        base, why = 1.0, f"trial {st['win_rate']:.0%} dari {n}"
+    cap = TRUST_CEIL.get(trust, 0.5)
+    w = min(base, cap)
+    if w < base:
+        why += f" + plafon {trust} {cap}"
+    return round(w, 2), why

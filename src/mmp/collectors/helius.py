@@ -106,6 +106,12 @@ def wallet_token_flows(wallet: str, txns: list[dict]) -> list[dict]:
     for t in txns or []:
         sig = t.get("transaction", {}).get("signatures", [None])[0] or t.get("signature", "")
         ts = t.get("timestamp")
+        try:
+            sol_out = sum(float(n.get("amount") or 0)
+                          for n in (t.get("nativeTransfers") or [])
+                          if n.get("fromUserAccount") == wallet) / 1e9
+        except (TypeError, ValueError):
+            sol_out = 0.0
         for tr in t.get("tokenTransfers") or []:
             mint = tr.get("mint", "")
             if not mint or mint == SOL_MINT:
@@ -116,9 +122,11 @@ def wallet_token_flows(wallet: str, txns: list[dict]) -> list[dict]:
             except (TypeError, ValueError):
                 amt = 0.0
             if to_u == wallet and from_u != wallet:
-                flows.append({"mint": mint, "side": "BUY", "amount": amt, "signature": sig, "ts": ts})
+                flows.append({"mint": mint, "side": "BUY", "amount": amt,
+                              "sol_spent": round(sol_out, 4), "signature": sig, "ts": ts})
             elif from_u == wallet and to_u != wallet:
-                flows.append({"side": "SELL", "mint": mint, "amount": amt, "signature": sig, "ts": ts})
+                flows.append({"side": "SELL", "mint": mint, "amount": amt,
+                              "sol_spent": 0.0, "signature": sig, "ts": ts})
     return flows
 
 def get_accounts_owners(addresses: list[str]) -> dict[str, str]:

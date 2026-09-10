@@ -146,12 +146,16 @@ DB & histori di-mount via volume agar tak hilang tiap rebuild.
 ## SOP operasional mingguan
 1. Scheduler EVM: `scheduler.py --chains base,bsc,ethereum --notify --paper`.
 2. Whale feed (butuh Helius key, jadwal terpisah 1-2 jam):
-   `whale_watch.py [--wallets 10] [--sigs 20]` -> bonus SM bila tracked
-   wallet BUY token dalam 24 jam terakhir.
-3. Bootstrap KOL: `add_callout.py` tiap callout tepercaya; cek `--list` (win-rate).
+   `whale_watch.py [--wallets 10] [--sigs 20]` -> bonus SM HANYA dari wallet
+   ranked + buy >= `whale_min_sol`. Seed awal: `seed_wallets.py --file seeds.txt`.
+   Batas jujur: whale EVM belum ada feed trader (konsentrasi holder + tax saja).
+3. Bootstrap KOL (standar input: contract address wajib + trust tier + reason):
+   `add_callout.py --token MINT --handle @x --trust trial --reason whale_buy`.
 4. Settle + report: `paper.py --settle --report` (wallets ter-feed otomatis).
 5. Kalibrasi: `calibrate.py` per-tier; angka 75/85 tak digeser tanpa buktinya.
 6. Cakupan: `stats.py` tiap minggu — hp_gap >50% baru justifikasi sumber baru.
+7. Bukti + ops: `report.py` (expectancy per-tier, max DD, veto top) dan
+   `ops_check.py` harian anti-lupa (feed STALE vs OK).
 
 ## Konfigurasi
 Lihat `config/mmp_config.yaml`. Kunci:

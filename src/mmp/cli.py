@@ -25,12 +25,29 @@ def wallets():
 
 def whale_watch():
     _run("whale_watch.py")
+
+
+def report():
+    _run("report.py")
+
+
+def ops_check():
+    _run("ops_check.py")
+
+
+def seed_wallets():
+    _run("seed_wallets.py")
+
+
+def stats():
+    _run("stats.py")
 def telegram_test(): _run("test_telegram.py")
 def killswitch(): _run("killswitch.py")
 
 def main():
     print("mmp commands: mmp-scan, mmp-paper, mmp-backtest, mmp-scheduler,")
-    print("  mmp-callout, mmp-wallets, mmp-telegram-test, mmp-killswitch")
+    print("  mmp-callout, mmp-wallets, mmp-telegram-test, mmp-killswitch,")
+    print("  mmp-whale-watch, mmp-report, mmp-ops, mmp-seed, mmp-stats")
     return 0
 
 if __name__ == "__main__":

@@ -87,6 +87,7 @@ def test_wallet_confidence():
 
 def test_kol_winrate_and_shilling():
     con = _mem()
+    koldb.init(con)  # migrasi kolom trust/reason (produksi selalu init dulu)
     koldb.add_callout(con, "T1", "F", handle="@a", trusted=True)
     koldb.add_callout(con, "T1", "F", handle="@b", trusted=True)
     koldb.add_callout(con, "T1", "F", handle="@c", trusted=False)
@@ -96,8 +97,12 @@ def test_kol_winrate_and_shilling():
     con.execute("INSERT INTO paper_positions(symbol,token,status,pnl_pct,close_reason) VALUES('F','T1','CLOSED',30.0,'TP'),('F','T1','CLOSED',30.0,'TP'),('F','T1','CLOSED',30.0,'TP')")
     st2 = koldb.handle_stats(con, "@a")
     assert st2["proven"] is True and st2["win_rate"] == 1.0
-    s, notes, meta = kol_an.analyze_kol({}, [{"trusted": True, "proven": True}, {"trusted": True}])
+    s, notes, meta = kol_an.analyze_kol({}, [{"handle": "@a", "weight": 1.5}, {"handle": "@b", "weight": 1.0}])
     assert s == 40 + 2.5 * 20 and meta["trusted_eff"] == 2.5
+    spam, _, _ = kol_an.analyze_kol({}, [{"handle": "@a", "weight": 1.5}] * 5)
+    assert spam == 40 + 1.5 * 20, "spam 1 handle = 1 suara (dedupe)"
+    noise, _, _ = kol_an.analyze_kol({}, [{"handle": "@x"}])
+    assert noise == 40.0, "tanpa weight/trusted = nol (fail-closed)"
 
 def test_cache_and_meter():
     _cache.clear()

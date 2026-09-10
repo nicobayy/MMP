@@ -6,7 +6,10 @@ Trusted = win_rate >= threshold dengan min_trades cukup.
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
+
+log = logging.getLogger(__name__)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS wallets(
@@ -34,6 +37,15 @@ CREATE TABLE IF NOT EXISTS whale_buys(
 
 def init(con: sqlite3.Connection):
     con.executescript(SCHEMA)
+    try:
+        con.execute("ALTER TABLE whale_buys ADD COLUMN sol_spent REAL DEFAULT 0")
+    except Exception:
+        pass
+    con.commit()
+
+def set_label(con: sqlite3.Connection, wallet: str, label: str, chain: str = "solana"):
+    upsert_candidate(con, wallet, chain)
+    con.execute("UPDATE wallets SET label=? WHERE wallet=?", (label, wallet))
     con.commit()
 
 def upsert_candidate(con: sqlite3.Connection, wallet: str, chain: str = "solana"):
@@ -120,24 +132,48 @@ def overlap_bonus(holders: list[str], trusted_wallets: list[str], per_wallet: fl
     return min(bonus, max_bonus), n
 
 def record_whale_flow(con: sqlite3.Connection, wallet: str, token: str, side: str,
-                      amount: float = 0.0, signature: str = "") -> bool:
+                      amount: float = 0.0, signature: str = "", sol_spent: float = 0.0) -> bool:
     """Simpan 1 arus whale. Return True bila baris baru (dedup via UNIQUE)."""
     try:
-        cur = con.execute("INSERT OR IGNORE INTO whale_buys(wallet, token, side, amount, signature)"
-                          " VALUES(?,?,?,?,?)", (wallet, token, side, float(amount or 0), signature or ""))
+        cur = con.execute("INSERT OR IGNORE INTO whale_buys(wallet, token, side, amount, signature, sol_spent)"
+                          " VALUES(?,?,?,?,?,?)",
+                          (wallet, token, side, float(amount or 0), signature or "", float(sol_spent or 0)))
         con.commit()
         return cur.rowcount > 0
     except Exception:
-        return False
+        try:  # DB lama tanpa kolom sol_spent
+            cur = con.execute("INSERT OR IGNORE INTO whale_buys(wallet, token, side, amount, signature)"
+                              " VALUES(?,?,?,?,?)",
+                              (wallet, token, side, float(amount or 0), signature or ""))
+            con.commit()
+            return cur.rowcount > 0
+        except Exception:
+            return False
 
-def recent_whale_buys(con: sqlite3.Connection, token: str, hours: int = 24) -> int:
-    """Jumlah wallet BERBEDA yang BUY token dalam window jam terakhir."""
+def recent_whale_buys(con: sqlite3.Connection, token: str, hours: int = 24,
+                      trusted_only: bool = True, min_trades: int = 5,
+                      min_win_rate: float = 0.6, min_sol: float = 0.0) -> int:
+    """Wallet BERBEDA yang BUY relevan dalam window. Default RANKED-ONLY:
+    bonus SM hanya dari wallet ber-track-record (bukan semua transfer).
+    min_sol = filter debu (SOL yang dibelanjakan per buy, 0 = mati)."""
     try:
-        row = con.execute("SELECT COUNT(DISTINCT wallet) FROM whale_buys"
-                          " WHERE token=? AND side='BUY' AND ts >= datetime('now', ?)",
-                          (token, f"-{hours} hours")).fetchone()
+        if trusted_only:
+            trusted_set = set(trusted(con, min_trades, min_win_rate))
+            if not trusted_set:
+                return 0
+            q = ",".join("?" for _ in trusted_set)
+            row = con.execute(
+                f"SELECT COUNT(DISTINCT wallet) FROM whale_buys WHERE token=? AND side='BUY'"
+                f" AND ts >= datetime('now', ?) AND COALESCE(sol_spent,0) >= ?"
+                f" AND wallet IN ({q})", (token, f"-{hours} hours", float(min_sol), *trusted_set)).fetchone()
+        else:
+            row = con.execute(
+                "SELECT COUNT(DISTINCT wallet) FROM whale_buys WHERE token=? AND side='BUY'"
+                " AND ts >= datetime('now', ?) AND COALESCE(sol_spent,0) >= ?",
+                (token, f"-{hours} hours", float(min_sol))).fetchone()
         return int(row[0])
-    except Exception:
+    except Exception as e:
+        log.debug("recent_whale_buys skip: %s", str(e)[:160])
         return 0
 
 def top_watched(con: sqlite3.Connection, limit: int = 10) -> list[str]:

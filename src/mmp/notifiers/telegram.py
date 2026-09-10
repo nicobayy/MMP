@@ -11,6 +11,15 @@ TIMEOUT = 15
 def _esc(x) -> str:
     return html.escape(str(x), quote=False)
 
+def _check_icon(status: str) -> str:
+    return {"OK": "✅", "FAIL": "⛔", "WARN": "⚠️"}.get(status, "❔")
+
+def format_checklist(d) -> str:
+    items = ((d.get("meta") or {}).get("checklist") or [])
+    if not items:
+        return ""
+    return "Audit: " + " ".join(f"{_check_icon(i.get('status', '?'))}{_esc(i.get('item', '?'))}" for i in items)
+
 def format_signal(s) -> str:
     d = s.to_dict() if hasattr(s, "to_dict") else s
     tier = int(d.get("tier", 1 if d.get("verdict") == "PASS" else 0))
@@ -28,6 +37,9 @@ def format_signal(s) -> str:
     ]
     if d.get("vetoes"):
         lines.append("Veto: " + "; ".join(_esc(v) for v in d["vetoes"][:4]))
+    audit = format_checklist(d)
+    if audit:
+        lines.append(audit)
     lines.append("Skor: " + ", ".join(f"{_esc(k)}={float(v):.0f}" for k, v in (d.get("scores") or {}).items()))
     pl = (d.get("plan") or {})
     if pl:

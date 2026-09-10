@@ -102,6 +102,42 @@ def data_grade(pair: dict, enrichment: dict | None = None) -> tuple[str, list[st
     return ("COMPLETE", []) if not missing else ("PARTIAL", missing)
 
 
+def security_checklist(pair: dict, enrichment: dict | None = None,
+                       dual: dict | None = None, grade: str = "?") -> list[dict]:
+    """Checklist audit per sinyal PASS/REJECT: tiap item OK/FAIL/UNKNOWN.
+    UNKNOWN jujur (tak ada data), bukan disamarkan. LP-lock real memang
+    tak tersedia gratis -> selalu UNKNOWN dengan alasan eksplisit.
+    """
+    en = enrichment or {}
+    labels = [str(x).lower() for x in (en.get("labels") or [])]
+    dual = dual or {}
+    out: list[dict] = []
+
+    def row(item: str, status: str, detail: str = ""):
+        out.append({"item": item, "status": status, "detail": detail})
+
+    row("mint", "FAIL" if "mintable-risk" in labels else ("OK" if "mint_renounced" in en else "UNKNOWN"),
+        "renounced" if en.get("mint_renounced") else ("aktif" if "mint_renounced" in en else "tanpa data Helius"))
+    row("freeze", "FAIL" if "freezable-risk" in labels else ("OK" if "mint_renounced" in en else "UNKNOWN"),
+        "aktif" if "freezable-risk" in labels else ("revoked/tak ada" if "mint_renounced" in en else "tanpa data"))
+    bt, st = en.get("buy_tax"), en.get("sell_tax")
+    if bt is None and st is None:
+        row("tax", "UNKNOWN", "tanpa data tax")
+    else:
+        row("tax", "OK" if float(bt or 0) <= 5 and float(st or 0) <= 5 else "FAIL", f"buy {bt}% / sell {st}%")
+    row("honeypot", "FAIL" if "honeypot" in labels else ("OK" if en.get("source_honeypot_is") else "UNKNOWN"),
+        "terdeteksi!" if "honeypot" in labels else ("cek bersih" if en.get("source_honeypot_is") else "tak dicek (EVM tanpa hp.is / Solana)"))
+    t10 = en.get("top10_pct")
+    if t10 is None:
+        row("top10", "UNKNOWN", "tanpa data distribusi")
+    else:
+        row("top10", "OK" if float(t10) <= 35 else "FAIL", f"{t10}% (batas 35%)")
+    row("lp_lock", "UNKNOWN", "cek on-chain tak tersedia gratis (proxy: mint+distribusi)")
+    row("dual", "OK" if dual.get("ok") else "WARN", str(dual.get("note", "-")))
+    row("grade", "OK" if grade == "COMPLETE" else "WARN", grade)
+    return out
+
+
 def risk_safety_score(pair: dict, enrichment: dict | None = None) -> tuple[float, list[str]]:
     """Skor 0-100 untuk keamanan. Penalti bila data penting belum ada."""
     enrichment = enrichment or {}

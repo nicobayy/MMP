@@ -1,7 +1,11 @@
-"""Catat KOL callout manual.
+"""Catat KOL callout manual — dengan standar input (SOP kualitas KOL).
+Wajib: --token (contract address, BUKAN cuma ticker).
 Usage:
-  python scripts/add_callout.py --token MINT --symbol XYZ --handle @kanal --trusted --source telegram
+  python scripts/add_callout.py --token MINT --symbol XYZ --handle @kanal --trust trusted --reason whale_buy --source telegram
   python scripts/add_callout.py --list --token MINT
+Trust: trusted (terkurasi) / trial (observasi) / untrusted (default, plafon 0.5).
+Reason: launch / listing / whale_buy / rotation / narrative / other.
+Catatan PowerShell: kutip handle, mis. --handle '@kanal'.
 """
 from __future__ import annotations
 
@@ -18,12 +22,14 @@ from mmp.storage.store import connect
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--token", default=None)
+    ap.add_argument("--token", default=None, help="contract address (wajib)")
     ap.add_argument("--symbol", default="")
     ap.add_argument("--chain", default="solana")
-    ap.add_argument("--source", default="telegram")
+    ap.add_argument("--source", default="telegram", help="telegram / x")
     ap.add_argument("--handle", default="")
-    ap.add_argument("--trusted", action="store_true")
+    ap.add_argument("--trust", default="", choices=["", "trusted", "trial", "untrusted"])
+    ap.add_argument("--trusted", action="store_true", help="shortcut --trust trusted")
+    ap.add_argument("--reason", default="", choices=["", *koldb.REASONS])
     ap.add_argument("--note", default="")
     ap.add_argument("--list", action="store_true")
     args = ap.parse_args()
@@ -35,14 +41,18 @@ def main():
             print("Belum ada callout untuk token itu.")
         for r in rows:
             st = koldb.handle_stats(con, r["handle"]) if r["handle"] else {}
-            wr = f" wr={st.get('win_rate', 0):.0%}({st.get('wins', 0)}W/{st.get('losses', 0)}L)" if st.get("calls") else " (belum ada outcome)"
-            print(f"[{'TRUSTED' if r['trusted'] else 'biasa'}{' PROVEN' if st.get('proven') else ''}] {r['handle']} via {r['source']} @ {r['ts']}{wr}")
+            w, wlabel = koldb.handle_weight(con, r.get("handle", ""), r.get("trust", "trusted"))
+            prec = f" prec={st.get('win_rate', 0):.0%} vol={st.get('calls', 0)}calls" if st.get("calls") else " (tanpa outcome)"
+            print(f"[{r.get('trust', '?')}/{r.get('reason') or '-'} w={w} {wlabel}] {r['handle']} via {r['source']} @ {r['ts']}{prec}")
         return
     if not args.token:
         ap.print_help()
         return
-    rid = koldb.add_callout(con, args.token, args.symbol, args.chain, args.source, args.handle, args.trusted, args.note)
-    print(f"OK callout #{rid} tersimpan (trusted={args.trusted}). Skor KOL aktif 48 jam ke depan.")
+    trust = "trusted" if args.trusted else args.trust
+    rid = koldb.add_callout(con, args.token, args.symbol, args.chain, args.source,
+                            args.handle, args.trusted, args.note, trust=trust, reason=args.reason)
+    print(f"OK callout #{rid} tersimpan (trust={trust or 'untrusted'}, reason={args.reason or '-'}). Aktif 48 jam.")
+
 
 if __name__ == "__main__":
     main()

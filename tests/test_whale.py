@@ -58,12 +58,17 @@ def test_whale_store_and_bonus():
 def test_recent_whale_buys_window():
     con = sqlite3.connect(":memory:")
     wal.init(con)
-    wal.record_whale_flow(con, "W1", "T", "BUY", 1, "S1")
-    wal.record_whale_flow(con, "W2", "T", "BUY", 1, "S2")
+    wal.record_whale_flow(con, "W1", "T", "BUY", 1, "S1", sol_spent=2.0)
+    wal.record_whale_flow(con, "W2", "T", "BUY", 1, "S2", sol_spent=0.01)
     wal.record_whale_flow(con, "W1", "T", "SELL", 1, "S3")
-    assert wal.recent_whale_buys(con, "T", 24) == 2, "hitung wallet BERBEDA, hanya BUY"
-    con.execute("UPDATE whale_buys SET ts=datetime('now','-49 hours') WHERE wallet='W2'")
-    assert wal.recent_whale_buys(con, "T", 24) == 1
+    assert wal.recent_whale_buys(con, "T", 24, trusted_only=False) == 2, "hitung wallet BERBEDA, hanya BUY"
+    assert wal.recent_whale_buys(con, "T", 24, trusted_only=False, min_sol=0.5) == 1, "filter debu"
+    assert wal.recent_whale_buys(con, "T", 24) == 0, "default ranked-only: tanpa track record = 0"
+    for _ in range(5):
+        wal.record_outcome(con, "W1", True, 5.0)
+    assert wal.recent_whale_buys(con, "T", 24) == 1, "W1 ranked -> dihitung; W2 belum"
+    con.execute("UPDATE whale_buys SET ts=datetime('now','-49 hours') WHERE wallet='W1'")
+    assert wal.recent_whale_buys(con, "T", 24) == 0
     assert wal.top_watched(con, 5) == []
     wal.add_sighting(con, "W9", "TX")
     wal.add_sighting(con, "W9", "TY")

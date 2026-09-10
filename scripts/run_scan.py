@@ -23,6 +23,7 @@ from mmp.notifiers.telegram import format_signal, format_summary, send_telegram
 from mmp.risk.position import build_plan
 from mmp.storage import kol as koldb
 from mmp.storage import paper as pstore
+from mmp.storage import stats as stats_mod
 from mmp.storage import wallets as wal
 from mmp.storage.store import connect, mark_alerted, save, should_alert
 
@@ -69,8 +70,18 @@ def helius_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
         log.debug("helius enrichment skip: %s", str(e)[:160])
         return {}
 
-def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
+def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
+    """Return (verdict, sig_dict, hp_status). hp_status untuk instrumentasi
+    cakupan: ok | no_tax | fail | na (lihat storage/stats.py)."""
     he = enrichment_for_pair(pair, cfg, args.use_helius)
+    if (pair.get("chainId") or "") == "solana":
+        hp_status = "na"
+    elif not he.get("source_honeypot_is"):
+        hp_status = "fail"
+    elif he.get("buy_tax") is None or he.get("sell_tax") is None:
+        hp_status = "no_tax"
+    else:
+        hp_status = "ok"
     # KOL confluence nyata dari DB: callout 48 jam + flag proven + cek shilling.
     kol_callouts: list = []
     shilling_n = 0
@@ -151,11 +162,11 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
             pstore.init(con)
             if pstore.has_open(con, sig.pair_address):
                 print("  paper: skip (sudah ada OPEN di pair ini)")
-                return sig.verdict, sig_dict
+                return sig.verdict, sig_dict, hp_status
             ok_new, why = guard.allow_new(con, cfg, sig.chain)
             if not ok_new:
                 print(f"  paper: skip (guard: {why})")
-                return sig.verdict, sig_dict
+                return sig.verdict, sig_dict, hp_status
             rp = cfg.get("paper") or {}
             rt = cfg.get("tiers") or {}
             risk = float(rt.get("tier2_size_pct", 0.5)) if sig.tier == 2 else float(rp.get("risk_pct", 1.0))
@@ -163,11 +174,12 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
             print(f"  paper: opened #{pid} (TIER-{sig.tier}, risk {risk}%)")
         except Exception as e:
             print(f"  paper: skip ({e})")
-    return sig.verdict, sig_dict
+    return sig.verdict, sig_dict, hp_status
 
-def _process_pair(job: dict) -> tuple[str, dict | None, str, str]:
+def _process_pair(job: dict) -> tuple[str, dict | None, str, str, str]:
     """Proses 1 pair di worker thread: koneksi DB sendiri (SQLite tak boleh
-    berbagi koneksi lintas thread), output ditangkap agar print tetap rapi."""
+    berbagi koneksi lintas thread), output ditangkap agar print tetap rapi.
+    Return (verdict, sig_dict|None, hp_status, err, output)."""
     import contextlib
     import io
     cfg, args, pair = job["cfg"], job["args"], job["pair"]
@@ -175,10 +187,10 @@ def _process_pair(job: dict) -> tuple[str, dict | None, str, str]:
     try:
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            v, d = handle_pair(pair, cfg, args, wcon)
-        return v, d, "", buf.getvalue()
+            v, d, hp_status = handle_pair(pair, cfg, args, wcon)
+        return v, d, hp_status, "", buf.getvalue()
     except Exception as e:
-        return "ERROR", None, str(e)[:200], ""
+        return "ERROR", None, "fail", str(e)[:200], ""
     finally:
         try:
             wcon.close()
@@ -264,7 +276,7 @@ def main():
         if args.use_helius and not hel.has_key():
             print("NOTE: HELIUS_API_KEY kosong -> Helius off, auto-SM pakai DexScreener saja. Isi .env untuk akurasi Solana.")
         workers = int((cfg.get("concurrency") or {}).get("scan_workers", 4))
-        results: list[tuple[str, dict | None, str, str]] = []
+        results: list[tuple[str, dict | None, str, str, str]] = []
         if workers > 1 and len(pairs) > 1:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=workers) as ex:
@@ -272,7 +284,8 @@ def main():
         else:
             results = [_process_pair(dict(cfg=cfg, args=args, pair=p)) for p in pairs]
         passes: list[dict] = []
-        for v, d, err, out in results:
+        cov_items: list[dict] = []
+        for v, d, hp_status, err, out in results:
             print(out, end="")
             if v == "ERROR":
                 print(f"- error: {err}")
@@ -282,8 +295,17 @@ def main():
             n_reject += v != "PASS"
             if v == "PASS" and d:
                 passes.append(d)
+            if d:
+                cov_items.append({"grade": (d.get("meta") or {}).get("data_grade", "?"), "hp": hp_status})
         print(f"\nRingkasan: PASS={n_pass} REJECT={n_reject} (konservatif = REJECT banyak itu NORMAL)")
         print(_meter.line())
+        cov = stats_mod.summarize_batch(cov_items)
+        print(f"coverage: grade COMPLETE={cov['complete']} PARTIAL={cov['partial']} BLIND={cov['blind']}"
+              f" | hp EVM ok={cov['hp_ok']} no_tax={cov['hp_no_tax']} fail={cov['hp_fail']}")
+        try:
+            stats_mod.save_batch(con, cov)
+        except Exception as e:
+            log.debug("simpan batch_stats skip: %s", str(e)[:160])
         if args.notify and (cfg.get("telegram") or {}).get("send_summary", True):
             ok = send_telegram(format_summary(n_pass, n_reject, passes))
             print(f"Summary telegram: {'sent' if ok else 'skip (isi .env dulu)'}")

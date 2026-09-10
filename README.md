@@ -148,6 +148,7 @@ DB & histori di-mount via volume agar tak hilang tiap rebuild.
 2. Bootstrap KOL: `add_callout.py` tiap callout tepercaya; cek `--list` (win-rate).
 3. Settle + report: `paper.py --settle --report` (wallets ter-feed otomatis).
 4. Kalibrasi: `calibrate.py` per-tier; angka 75/85 tak digeser tanpa buktinya.
+5. Cakupan: `stats.py` tiap minggu — hp_gap >50% baru justifikasi sumber baru.
 
 ## Konfigurasi
 Lihat `config/mmp_config.yaml`. Kunci:

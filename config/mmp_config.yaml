@@ -1,0 +1,99 @@
+# MMP Conservative Config v0.1
+# Semua angka bisa di-tune tanpa ubah kode.
+
+signal:
+  min_confidence: 85        # PASS hanya jika >= ini. Permissive mode: 65
+  require_smart_money: true # jika true, skor smart_money=0 => max skor 70-an (auto reject)
+  require_kol_or_sm: true   # minimal salah satu dari SM/KOL harus ada
+
+weights:
+  # total harus 100
+  liquidity_exit: 25
+  risk_safety: 25
+  token_metrics: 20
+  smart_money: 20
+  kol: 10
+
+risk:
+  # HARD VETO — satu saja terlanggar => REJECT
+  min_liquidity_usd: 30000
+  min_volume_h24_usd: 50000
+  min_txns_h24: 200
+  min_holders: 300            # bila data holder tersedia; bila tidak ada data => bukan veto, tapi skor dikurangi
+  max_buy_tax_pct: 5
+  max_sell_tax_pct: 5
+  max_top10_holders_pct: 35   # bila data tersedia
+  min_lp_lock_pct: 70         # bila data tersedia
+  max_fdv_to_mcap_ratio: 4.0
+  min_pair_age_minutes: 60    # tolak token < 1 jam (anti-rug cepat) — kecuali permissive
+  blocked_labels: ["honeypot", "mintable-risk", "proxy-risk"]
+
+liquidity:
+  min_liquidity_usd: 30000
+  min_volume_to_liquidity_ratio: 1.0  # volume h24 / liquidity >= 1 => ada aktivitas exit
+  max_price_impact_1sol_pct: 5.0      # simulasi sederhana
+  min_dex_count: 1
+
+token_metrics:
+  min_price_change_h24_pct: -30   # tolak yang sudah dump parah
+  max_price_change_h24_pct: 500   # tolak yang sudah parabolic (FOMO telat)
+  min_price_change_h1_pct: -25
+  min_volume_h1_usd: 5000
+
+position:
+  max_risk_per_trade_pct: 1.0
+  default_stop_loss_pct: 15.0
+  default_take_profit_pct: 30.0  # RR 1:2
+  min_reward_risk: 1.5
+
+chains:
+  # Prioritas: solana selalu diproses & diurutkan duluan.
+  # Multi-chain aktif: ethereum, bsc, base, arbitrum tinggal dipakai via --chains.
+  enabled: ["solana", "ethereum", "bsc", "base"]
+  priority: ["solana", "ethereum", "bsc", "base"]
+  per_chain_limit: 10
+
+helius:
+  enabled: true            # auto-off bila HELIUS_API_KEY kosong
+  timeout_sec: 15
+  max_signatures: 100      # batasi RPC calls agar hemat kredit
+
+smart_money_auto:
+  # Auto-discovery tanpa list wallet manual. Skor max 85 (tak pernah 100).
+  enabled: true
+  min_score_to_count: 60   # di bawah ini dianggap "no confluence" untuk cap konservatif
+  max_auto_score: 85
+  healthy_buy_ratio_min: 0.50
+  healthy_buy_ratio_max: 0.70
+  max_top_holder_pct: 15.0
+
+tracker:
+  # Win-rate tracking: kandidat top holders token PASS tersimpan otomatis.
+  enabled: true
+  min_trades: 5
+  min_win_rate: 0.60
+
+telegram:
+  cooldown_min: 120        # anti-spam: 1 pair max 1 alert per 2 jam
+  send_summary: true       # kirim ringkasan tiap run bila --notify
+
+geckoterminal:
+  enabled: true            # universe fallback EVM (gratis, tanpa key)
+
+birdeye:
+  enabled: true            # auto-off bila BIRDEYE_API_KEY kosong
+
+kol:
+  window_hours: 48         # callout lebih tua dari ini tak dihitung
+  # skor KOL: 40 + 20 per trusted callout (lihat analyzers/kol.py)
+
+paper:
+  risk_pct: 1.0            # risiko virtual per posisi paper
+  timeout_h: 72            # posisi OPEN lebih tua dari ini ditutup TIMEOUT saat settle
+  # auto-open via: run_scan --paper / scheduler --paper (dedup 1 OPEN per pair)
+
+backtest:
+  note: "forward-measure entry->live, bukan klaim masa lalu"
+
+scheduler:
+  interval_min: 60

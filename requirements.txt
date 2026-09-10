@@ -1,0 +1,7 @@
+requests==2.34.2
+pyyaml==6.0.3
+pydantic==2.13.5
+python-dotenv==1.2.3
+pytest==9.1.1
+streamlit==1.63.0
+pandas==3.0.5

@@ -1,0 +1,110 @@
+# MMP — Melok Melok Profit
+Sistem intelijen trading yang sangat konservatif & berorientasi precision tinggi.
+
+## Prinsip Inti
+1. **Precision > Recall.** Lebih baik TIDAK kasih sinyal daripada kasih sinyal lemah. Target: sedikit sinyal, tapi confidence sangat tinggi.
+2. **Konservatif by design.** Ada HARD VETO: satu red flag fatal = sinyal dibatalkan, berapapun skornya.
+3. **Expectancy positif.** Setiap sinyal wajib punya TP/SL + position size + alasan exit capability jelas.
+4. **Multi-chain.** Arsitektur collector pluggable: Solana dulu (MVP), EVM (ETH/BSC/Base) tinggal tambah collector.
+
+## Funnel MMP (kenapa risiko kecil)
+```
+Universe (DexScreener boosts/search)
+  → Liquidity & Exit Filter (bisa keluar apa tidak?)
+  → Risk Filter / HARD VETO (honeypot, mint, tax, LP lock, holder集中)
+  → Token Metrics (momentum, volume, FDV/MC, umur, holder)
+  → Smart Money confluence (tracker wallet)
+  → KOL / Callout confluence
+  → Scoring (0-100) + Gate (>=85 baru PASS)
+  → Risk sizing (TP/SL, max risk 1-2%)
+  → Sinyal Telegram + Log SQLite
+```
+
+Skor default TIDAK akan lolos kalau data Smart Money / KOL kosong — ini disengaja agar konservatif.
+Untuk testing, ada mode `--permissive` yang menurunkan threshold.
+
+## Struktur
+```
+config/mmp_config.yaml   <- semua threshold, bisa di-tune tanpa ubah kode
+src/mmp/
+  collectors/dexscreener.py  <- universe utama multi-chain (gratis)
+  collectors/geckoterminal.py<- universe fallback EVM (gratis)
+  collectors/helius.py       <- holder + mint authority Solana (butuh key)
+  collectors/birdeye.py      <- cross-check holder/vol Solana (butuh key)
+  collectors/universe.py     <- gabung + sort (Solana prioritas)
+  analyzers/risk.py          <- hard veto
+  analyzers/liquidity.py     <- exit capability
+  analyzers/token_metrics.py
+  analyzers/smart_money.py   <- list manual (opsional)
+  analyzers/smart_money_auto.py <- auto-discovery + bonus wallet terpercaya
+  analyzers/kol.py           <- callout DB 48 jam terakhir
+  engine/scoring.py          <- weighted confidence
+  engine/gate.py             <- PASS / REJECT + alasan
+  engine/signal.py
+  risk/position.py           <- TP/SL + sizing + expectancy
+  backtest/engine.py         <- settle TP/SL + ringkasan expectancy
+  notifiers/telegram.py      <- alert PASS + summary (cooldown anti-spam)
+  storage/store.py           <- sinyal + sent_alerts
+  storage/wallets.py         <- win-rate tracker
+  storage/kol.py             <- callout DB
+  storage/paper.py           <- posisi paper virtual
+scripts/run_scan.py          <- scan utama (--notify --paper --chains)
+scripts/scheduler.py         <- loop berkala + auto-settle paper
+scripts/paper.py             <- list / settle / report paper
+scripts/backtest.py          <- ukur return PASS vs harga live
+scripts/add_callout.py       <- catat KOL callout
+scripts/build_wallets.py     <- kumpulkan kandidat wallet
+scripts/record_outcome.py    <- catat win/loss wallet
+scripts/test_telegram.py     <- tes bot
+dashboard/app.py             <- dashboard Streamlit
+tests/
+```
+
+## Cara Jalan (Windows, Python 3.12)
+```powershell
+cd D:\MMP
+pip install -r requirements.txt
+copy .env.example .env   # isi HELIUS_API_KEY, BIRDEYE_API_KEY, TELEGRAM_BOT_TOKEN/CHAT_ID
+# Scan 1 token Solana via address:
+python scripts/run_scan.py --token So11111111111111111111111111111111111111112 --chain solana
+# Scan multi-chain + Telegram + paper:
+python scripts/run_scan.py --top-boosts --limit 5 --chains solana,base --notify --paper
+# Mode testing (lebih longgar):
+python scripts/run_scan.py --top-boosts --limit 10 --permissive
+# Loop berkala (scheduler):
+python scripts/scheduler.py --interval-min 60 --limit 5 --chains solana,base --notify --paper
+# KOL callout:
+python scripts/add_callout.py --token MINT --symbol XYZ --handle @kanal --trusted
+# Paper + backtest:
+python scripts/paper.py --settle
+python scripts/paper.py --report
+python scripts/backtest.py --limit 50
+# Dashboard:
+streamlit run dashboard/app.py
+# Jalankan test:
+pytest -q
+```
+
+## Catatan jujur (bukan klaim)
+- LP-lock on-chain tidak ada API publik gratis yang reliabel → MMP memakai proxy
+  konservatif: mint authority (Helius) + konsentrasi top holders + penalti skor bila data kosong.
+- Backtest V1 = forward-measure (entry DB vs harga live), bukan backtest candle historis.
+  Jangan pakai uang asli sebelum paper report expectancy > 0 dari minimal 20 posisi closed.
+
+## Konfigurasi
+Lihat `config/mmp_config.yaml`. Kunci:
+- `signal.min_confidence: 85` — ambang PASS.
+- `risk.*` — veto fatal.
+- `liquidity.*` — syarat exit.
+- `weights.*` — bobot scoring.
+
+## Roadmap
+- [x] Collector GeckoTerminal (EVM fallback + cross-check)
+- [x] Collector Helius (holder + mint authority Solana real; LP-lock via proxy konservatif)
+- [x] Smart money wallet DB + Birdeye cross-check (tanpa key = graceful off)
+- [x] KOL tracker (callout DB + window 48 jam, trusted berbobot)
+- [x] Backtester (forward-measure) + paper trading (TP/SL settle + report)
+- [x] Dashboard web + histori sinyal
+- [x] Scheduler berkala + Telegram alert anti-spam
+
+> Filosofi: MMP itu filter, bukan radar. Radar memberi banyak titik. Filter hanya meloloskan yang layak.

@@ -118,7 +118,7 @@ portfolio:
   # Guard level-portofolio: berlaku untuk paper-open; daily-stop juga blokir alert.
   max_open_positions: 5
   max_per_chain: 2
-  daily_stop_pct: -3.0     # sum(pnl% x risk%) closed hari ini <= ini -> setop buka baru
+  daily_stop_pct: -3.0     # % modal (sum pnl_pct*risk_pct/sl_pct); 1x SL T1 (~-1% modal) tak memicu, ~3x SL beruntun memicu
   # Kill switch: buat file data/STOP (atau scripts/killswitch.py --on)
 
 backtest:

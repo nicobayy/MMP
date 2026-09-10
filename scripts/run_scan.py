@@ -234,6 +234,10 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if args.permissive and (args.notify or args.paper):
+        print("ABORT: --permissive (mode testing, SM/KOL disimulasi) dilarang dengan --notify/--paper.")
+        print("Jalankan tanpa --permissive untuk sinyal riil, atau tanpa --notify --paper untuk testing lokal.")
+        raise SystemExit(2)
     _meter.set_budgets(cfg.get("api_budgets"))
     from mmp.collectors import limits as _limits
     _limits.configure((cfg.get("concurrency") or {}).get("per_source"))

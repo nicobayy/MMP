@@ -42,7 +42,11 @@ def test_guard_caps_and_daily_stop(monkeypatch):
     assert ok is False and "max open" in why
     ok, why = guard.allow_new(con, CFG, "solana", for_alert=True)
     assert ok is True, "caps tak boleh blokir alert"
-    con.execute("INSERT INTO paper_positions(symbol,chain,status,pnl_pct,closed_ts) VALUES('C','solana','CLOSED',-5.0,CURRENT_TIMESTAMP)")
+    con.execute("INSERT INTO paper_positions(symbol,chain,status,pnl_pct,risk_pct,entry,sl,closed_ts) VALUES('C','solana','CLOSED',-5.0,1.0,100,85,CURRENT_TIMESTAMP)")
+    ok, why = guard.allow_new(con, CFG, "base", for_alert=True)
+    assert ok is True, "satu rugi kecil (-0.33pct modal) tak boleh memicu daily-stop -3.0"
+    assert round(guard.realized_today(con), 2) == -0.33
+    con.execute("INSERT INTO paper_positions(symbol,chain,status,pnl_pct,risk_pct,entry,sl,closed_ts) VALUES('D','solana','CLOSED',-16.4,1.0,100,85,CURRENT_TIMESTAMP),('E','solana','CLOSED',-16.4,1.0,100,85,CURRENT_TIMESTAMP),('F','solana','CLOSED',-16.4,1.0,100,85,CURRENT_TIMESTAMP)")
     ok, why = guard.allow_new(con, CFG, "base", for_alert=True)
     assert ok is False and "daily-stop" in why
 

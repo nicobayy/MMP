@@ -11,10 +11,12 @@ def _esc(x) -> str:
 
 def format_signal(s) -> str:
     d = s.to_dict() if hasattr(s, "to_dict") else s
-    emoji = "✅" if d["verdict"] == "PASS" else "⛔"
+    tier = int(d.get("tier", 1 if d.get("verdict") == "PASS" else 0))
+    emoji = "✅" if d["verdict"] == "PASS" and tier == 1 else ("🔶" if d["verdict"] == "PASS" else "⛔")
+    tier_txt = f"TIER-{tier}" + (" (size 1/2, paper-wajib)" if tier == 2 else "")
     sm = (d.get("meta") or {}).get("sm") or {}
     lines = [
-        f"{emoji} <b>MMP {d['verdict']}</b> | {_esc(d['symbol'])} ({_esc(d['chain'])})",
+        f"{emoji} <b>MMP {d['verdict']} {tier_txt}</b> | {_esc(d['symbol'])} ({_esc(d['chain'])})",
         f"Conf: <b>{d['confidence']}</b> (min {d['threshold']})",
         f"Harga: ${_esc(d['price_usd'])} | DEX: {_esc(d['dex'])}",
         f"MCap: {_esc((d.get('meta') or {}).get('mcap'))} | Liq: ${_esc(((d.get('meta') or {}).get('liquidity') or {}).get('liquidity_usd'))}",
@@ -33,9 +35,12 @@ def format_signal(s) -> str:
     return "\n".join(lines)
 
 def format_summary(n_pass: int, n_reject: int, passes: list) -> str:
-    lines = [f"📊 <b>MMP Summary</b> | PASS={n_pass} REJECT={n_reject}"]
+    t1 = sum(1 for p in passes if int(p.get("tier", 1)) == 1)
+    t2 = sum(1 for p in passes if int(p.get("tier", 1)) == 2)
+    lines = [f"📊 <b>MMP Summary</b> | PASS={n_pass} (T1={t1} T2={t2}) REJECT={n_reject}"]
     for p in passes[:10]:
-        lines.append(f"✅ {_esc(p['symbol'])} ({_esc(p['chain'])}) conf={p['confidence']} ${p['price_usd']}")
+        badge = f"T{int(p.get('tier', 1))}"
+        lines.append(f"✅ [{badge}] {_esc(p['symbol'])} ({_esc(p['chain'])}) conf={p['confidence']} ${p['price_usd']}")
     if not passes:
         lines.append("Tidak ada PASS. Konservatif = normal.")
     return "\n".join(lines)

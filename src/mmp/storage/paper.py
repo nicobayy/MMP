@@ -19,16 +19,20 @@ CREATE TABLE IF NOT EXISTS paper_positions(
 
 def init(con: sqlite3.Connection):
     con.execute(SCHEMA)
+    try:  # migrasi non-destruktif untuk DB lama
+        con.execute("ALTER TABLE paper_positions ADD COLUMN tier INTEGER DEFAULT 1")
+    except Exception:
+        pass
     con.commit()
 
 def open_from_signal(con: sqlite3.Connection, sig: dict, risk_pct: float = 1.0) -> int:
     plan = sig.get("plan") or {}
     cur = con.execute(
-        "INSERT INTO paper_positions(signal_id, symbol, chain, token, pair_addr, entry, sl, tp, risk_pct)"
-        " VALUES(?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO paper_positions(signal_id, symbol, chain, token, pair_addr, entry, sl, tp, risk_pct, tier)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?)",
         (sig.get("db_id", 0), sig.get("symbol", ""), sig.get("chain", ""), sig.get("token_address", ""),
          sig.get("pair_address", ""), sig.get("price_usd", 0), plan.get("stop_loss", 0),
-         plan.get("take_profit", 0), risk_pct))
+         plan.get("take_profit", 0), risk_pct, int(sig.get("tier", 1))))
     con.commit()
     return int(cur.lastrowid)
 

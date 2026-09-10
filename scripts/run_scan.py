@@ -103,15 +103,18 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
             print(f"  telegram: {'sent' if ok else 'skip (isi .env dulu)'}")
         else:
             print(f"  telegram: skip (cooldown {cd}m, sudah Pernah dikirim)")
-    # Paper auto-open tiap PASS (dedup: 1 pair max 1 OPEN).
+    # Paper auto-open tiap PASS (dedup: 1 pair max 1 OPEN; TIER-2 size setengah).
     if args.paper and sig.verdict == "PASS":
         try:
             pstore.init(con)
             if pstore.has_open(con, sig.pair_address):
                 print("  paper: skip (sudah ada OPEN di pair ini)")
             else:
-                pid = pstore.open_from_signal(con, sig_dict, float((cfg.get("paper") or {}).get("risk_pct", 1.0)))
-                print(f"  paper: opened #{pid}")
+                rp = cfg.get("paper") or {}
+                rt = cfg.get("tiers") or {}
+                risk = float(rt.get("tier2_size_pct", 0.5)) if sig.tier == 2 else float(rp.get("risk_pct", 1.0))
+                pid = pstore.open_from_signal(con, sig_dict, risk)
+                print(f"  paper: opened #{pid} (TIER-{sig.tier}, risk {risk}%)")
         except Exception as e:
             print(f"  paper: skip ({e})")
     return sig.verdict, sig_dict

@@ -71,10 +71,14 @@ def main():
                 print(f"- open #{o['id']} {o['symbol']} {r['pnl_pct']}%")
         print(f"Settled {n} posisi (timeout {timeout_h}h).")
     if args.report:
-        rows = con.execute("SELECT pnl_pct, close_reason FROM paper_positions WHERE status='CLOSED'").fetchall()
+        rows = con.execute("SELECT pnl_pct, close_reason, COALESCE(tier,1) FROM paper_positions WHERE status='CLOSED'").fetchall()
         outcomes = [{"status": r[1], "pnl_pct": r[0]} for r in rows]
         rep = summarize(outcomes)
-        print("Paper report:", json.dumps(rep, indent=2))
+        print("Paper report (semua tier):", json.dumps(rep, indent=2))
+        for t in (1, 2):
+            to = [{"status": r[1], "pnl_pct": r[0]} for r in rows if r[2] == t]
+            if to:
+                print(f"Paper report TIER-{t}:", json.dumps(summarize(to), indent=2))
         if rep.get("n", 0) and rep["expectancy"] <= 0:
             print("WARNING: expectancy <= 0 — jangan pakai uang asli, tune config dulu.")
 

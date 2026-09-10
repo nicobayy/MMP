@@ -23,6 +23,7 @@ class Signal:
     verdict: str  # PASS / REJECT
     reason: str
     threshold: float
+    tier: int = 0  # 0=reject, 1=full size, 2=half size + paper-wajib
     vetoes: list[str] = field(default_factory=list)
     scores: dict = field(default_factory=dict)
     notes: dict = field(default_factory=dict)
@@ -66,7 +67,9 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
     else:
         confidence, cap_notes = sc.apply_conservative_rules(scores, cfg)
 
-    verdict, reason, threshold = gt.decide(vetoes, confidence, cfg, permissive)
+    verdict, reason, threshold, tier = gt.decide(
+        vetoes, confidence, cfg, permissive,
+        dual_source=("mint_renounced" in enrichment and enrichment.get("holders") is not None))
 
     base = pair.get("baseToken") or {}
     price = float(pair.get("priceUsd") or 0)
@@ -76,7 +79,7 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
         price_usd=price, pair_address=pair.get("pairAddress", "?"),
         dex=pair.get("dexId", "?"), confidence=round(confidence, 2),
         verdict=verdict, reason=reason + (" | " + "; ".join(cap_notes) if cap_notes else ""),
-        threshold=threshold, vetoes=vetoes, scores=scores,
+        threshold=threshold, tier=tier, vetoes=vetoes, scores=scores,
         notes={"liquidity": liq_notes, "safety": safe_notes, "token": tm_notes,
                "sm": sm_notes, "kol": kol_notes},
         meta={"liquidity": liq_meta, "token": tm_meta, "sm": sm_meta, "kol": kol_meta,

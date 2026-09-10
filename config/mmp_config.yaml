@@ -2,9 +2,16 @@
 # Semua angka bisa di-tune tanpa ubah kode.
 
 signal:
-  min_confidence: 85        # PASS hanya jika >= ini. Permissive mode: 65
+  min_confidence: 85        # TIER-1: keyakinan penuh, size penuh
   require_smart_money: true # jika true, skor smart_money=0 => max skor 70-an (auto reject)
   require_kol_or_sm: true   # minimal salah satu dari SM/KOL harus ada
+
+tiers:
+  # TIER-2: jalur otomatis-penuh-tanpa-KOL. BUKAN pelonggaran veto —
+  # veto tetap membunuh semua tier. Risiko dijaga via size 1/2 + paper-wajib.
+  tier2_min: 75
+  tier2_size_pct: 0.5        # setengah dari paper.risk_pct (0.5% modal)
+  tier2_require_dual_source: true  # Helius DAN Birdeye harus hadir & setuju
 
 weights:
   # total harus 100

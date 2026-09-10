@@ -3,8 +3,17 @@ TIER-1 = keyakinan penuh (>=85). TIER-2 = otomatis-penuh-tanpa-KOL (75-84)
 dengan syarat dual-source (dua sumber independen hadir DAN setuju:
 Solana = Helius+Birdeye, EVM = DexScreener+honeypot.is).
 Size setengah, paper-wajib. Veto tetap membunuh semua tier.
+H2: threshold permissive dibaca dari config signal.permissive_confidence,
+bukan hard-coded, agar bisa dikalibrasi/diaudit via yaml.
 """
 from __future__ import annotations
+
+
+def permissive_threshold(cfg: dict) -> float:
+    try:
+        return float((cfg.get("signal") or {}).get("permissive_confidence", 65.0))
+    except (TypeError, ValueError):
+        return 65.0
 
 
 def decide(vetoes: list[str], confidence: float, cfg: dict,
@@ -17,7 +26,8 @@ def decide(vetoes: list[str], confidence: float, cfg: dict,
         # tak boleh lolos sebagai PASS dengan alasan apa pun.
         return "REJECT", "VETO: " + "; ".join(vetoes[:4]), t1, 0
     if permissive:
-        return "PASS", f"confidence {confidence} >= 65.0 (permissive)", 65.0, 1
+        pt = permissive_threshold(cfg)
+        return "PASS", f"confidence {confidence} >= {pt} (permissive)", pt, 1
     if confidence >= t1:
         return "PASS", f"confidence {confidence} >= {t1} (TIER-1)", t1, 1
     if confidence >= t2:

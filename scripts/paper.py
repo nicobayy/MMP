@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from mmp.backtest.engine import apply_costs, settle, summarize
+from mmp.backtest.engine import apply_costs, effective_costs, settle, summarize
 from mmp.backtest.replay import replay as replay_candles
 from mmp.collectors import ohlcv as ohlcv_mod
 from mmp.collectors import prices as pxr
@@ -147,7 +147,19 @@ def main():
     if args.settle:
         n = 0
         for o in pstore.list_open(con):
-            r = settle_position(o, cfg, timeout_h, slip, fee, con)
+            # M4: biaya per posisi mengikuti likuiditas entry (token tipis
+            # bayar slippage lebih mahal, bukan flat 0.5%).
+            try:
+                _liq = None
+                _sig = con.execute("SELECT payload FROM signals WHERE id=?",
+                                   (o.get("signal_id", 0) or 0,)).fetchone()
+                if _sig and _sig[0]:
+                    import json as _json
+                    _liq = ((_json.loads(_sig[0]).get("meta") or {}).get("liquidity") or {}).get("liquidity_usd")
+                _slip, _fee = effective_costs(_liq, slip, fee, cfg)
+            except Exception:
+                _slip, _fee = slip, fee
+            r = settle_position(o, cfg, timeout_h, _slip, _fee, con)
             if r["status"] in ("TP", "SL", "TIMEOUT") and not args.mark_to_market:
                 pstore.close_position(con, o["id"], r["exit_price"], r["pnl_pct"], r["status"])
                 fed = wal.attribute_token_outcome(con, o.get("token", ""), r["pnl_pct"] > 0, r["pnl_pct"]) if o.get("token") else 0

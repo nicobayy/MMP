@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from mmp.backtest.engine import apply_costs  # noqa: E402
+from mmp.backtest.engine import apply_costs, effective_costs  # noqa: E402
 from mmp.backtest.replay import calibrate, replay  # noqa: E402
 from mmp.collectors import ohlcv  # noqa: E402
 from mmp.config import db_path, load_config  # noqa: E402
@@ -53,7 +53,9 @@ def main():
             continue
         sl_pct = abs((entry - (sl or entry * 0.85)) / entry * 100)
         tp_pct = abs(((tp or entry * 1.3) - entry) / entry * 100)
-        # Join via signal_id bila ada (paper baru), fallback heuristik token+harga (paper lama).
+        # M3: join STRICT via signal_id (kolom paper baru). Paper lama tanpa
+        # signal_id -> SKIP dengan pesan, bukan heuristik token+harga yang
+        # bisa menempelkan confidence token lain.
         sig = None
         try:
             prow = con.execute("SELECT signal_id FROM paper_positions WHERE id=?", (pid,)).fetchone()
@@ -62,12 +64,16 @@ def main():
         except Exception:
             sig = None
         if not sig:
-            sig = con.execute("SELECT payload FROM signals WHERE token=? AND verdict='PASS'"
-                              " ORDER BY ABS(price-?) LIMIT 1", (token, entry)).fetchone()
+            print(f"- #{pid} {sym}: tanpa signal_id (paper lama), skip agar tak salah atribusi")
+            continue
         try:
-            conf = float(json.loads((sig or ["{}"])[0]).get("confidence", 0))
+            _d = json.loads((sig or ["{}"])[0])
+            conf = float(_d.get("confidence", 0))
+            _liq = ((_d.get("meta") or {}).get("liquidity") or {}).get("liquidity_usd")
+            _slip, _fee = effective_costs(_liq, slip, fee, cfg)
         except Exception:
             conf = 0.0
+            _slip, _fee = slip, fee
         pool = ohlcv.resolve_pool(chain, token or "")
         if not pool:
             print(f"- #{pid} {sym}: pool tak ditemukan, skip")
@@ -77,7 +83,7 @@ def main():
             candles = ohlcv.fetch(chain, pool, "hour", int((cfg.get("backtest") or {}).get("replay_limit", 500)))
             cstore.upsert_candles(con, chain, pool, "hour", candles)
         r = replay(_epoch(opened), float(entry), sl_pct, tp_pct, candles, timeout_h=timeout_h)
-        r["pnl_pct"] = apply_costs(r["pnl_pct"], slip, fee)
+        r["pnl_pct"] = apply_costs(r["pnl_pct"], _slip, _fee)
         rows.append({"conf": conf, "tier": tier or 1, **r})
         print(f"- #{pid} {sym} T{tier or 1} conf={conf}: {r['status']} {r['pnl_pct']}%")
     print()

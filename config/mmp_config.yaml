@@ -5,6 +5,7 @@ signal:
   min_confidence: 85        # TIER-1: keyakinan penuh, size penuh
   require_smart_money: true # jika true, skor smart_money=0 => max skor 70-an (auto reject)
   require_kol_or_sm: true   # minimal salah satu dari SM/KOL harus ada
+  permissive_confidence: 65 # H2: threshold mode --permissive (testing saja, tak boleh via notify/paper)
 
 tiers:
   # TIER-2: jalur otomatis-penuh-tanpa-KOL. BUKAN pelonggaran veto —
@@ -56,6 +57,7 @@ position:
   default_stop_loss_pct: 15.0
   default_take_profit_pct: 30.0  # RR 1:2
   min_reward_risk: 1.5
+  capital_usd: 1000  # L3: modal acuan size nyata (paper). None = size tak dihitung, hanya note
 
 chains:
   # Prioritas: solana selalu diproses & diurutkan duluan.
@@ -111,8 +113,9 @@ kol:
 paper:
   risk_pct: 1.0            # risiko virtual per posisi paper
   timeout_h: 72            # posisi OPEN lebih tua dari ini ditutup TIMEOUT saat settle
-  slippage_pct: 0.5        # asumsi slippage per sisi (eksplisit, bukan hasil ukur)
+  slippage_pct: 0.5        # asumsi slippage per sisi untuk liq >= 100k (lihat cost_tiers)
   fee_pct: 0.2             # asumsi fee per sisi
+  cost_tiers: [[50000, 2.0], [100000, 1.0]]  # M4: [batas_liq_usd, slip_pct] — token tipis bayar lebih mahal
   # auto-open via: run_scan --paper / scheduler --paper (dedup 1 OPEN per pair)
 
 portfolio:

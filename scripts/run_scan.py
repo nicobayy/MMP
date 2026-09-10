@@ -136,7 +136,14 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
                    trusted_overlap=n_overlap, trusted_bonus=w_bonus,
                    kol_callouts=kol_callouts or None, shilling_n=shilling_n,
                    whale_buys_n=whale_buys_n)
-    sig.plan = build_plan(sig.price_usd, cfg)
+    # L3: size nyata dari modal acuan config (paper). None = plan tanpa size.
+    _pos = cfg.get("position") or {}
+    _cap = _pos.get("capital_usd")
+    try:
+        _cap = float(_cap) if _cap is not None else None
+    except (TypeError, ValueError):
+        _cap = None
+    sig.plan = build_plan(sig.price_usd, cfg, capital_usd=_cap)
     row = save(con, sig)
     sig_dict = sig.to_dict()
     sig_dict["db_id"] = row
@@ -251,8 +258,8 @@ def main():
 
     if args.pair and args.chain:
         from mmp import validators as _v
-        if not _v.is_token_address(args.chain, args.pair):
-            print(f"Alamat pair tak valid ({_v.explain(args.chain, args.pair)}).")
+        if not _v.is_pair_address(args.chain, args.pair):
+            print(f"Alamat pair tak valid ({_v.explain_pair(args.chain, args.pair)}).")
             return
         pair = dex.get_pair(args.chain, args.pair)
         if not pair:

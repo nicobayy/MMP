@@ -19,12 +19,23 @@ st.caption("Precision-first • Solana prioritas, multi-chain • Konservatif: R
 
 @st.cache_data(ttl=15)
 def load_df(path: str) -> pd.DataFrame:
-    con = sqlite3.connect(path)
+    # M6: baca via timeout + WAL-safe agar tak 'database is locked'
+    # saat scan paralel sedang menulis.
+    con = sqlite3.connect(path, timeout=30.0, check_same_thread=False)
     try:
+        try:
+            con.execute("PRAGMA journal_mode=WAL")
+            con.execute("PRAGMA busy_timeout=5000")
+        except Exception:
+            pass
         df = pd.read_sql_query("SELECT id, ts, verdict, symbol, chain, token, pair_addr, price, confidence, reason, payload FROM signals ORDER BY id DESC LIMIT 500", con)
     except Exception:
         df = pd.DataFrame()
-    con.close()
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
     if not df.empty:
         def _tier(p):
             try:
@@ -66,9 +77,18 @@ st.dataframe(f.drop(columns=["payload"], errors="ignore"), use_container_width=T
 
 sel = st.selectbox("Detail sinyal (id)", f["id"].tolist()[:100] if len(f) else [])
 if sel:
-    con = sqlite3.connect(db)
-    row = con.execute("SELECT payload FROM signals WHERE id=?", (sel,)).fetchone()
-    con.close()
+    con = sqlite3.connect(db, timeout=30.0, check_same_thread=False)
+    try:
+        try:
+            con.execute("PRAGMA busy_timeout=5000")
+        except Exception:
+            pass
+        row = con.execute("SELECT payload FROM signals WHERE id=?", (sel,)).fetchone()
+    finally:
+        try:
+            con.close()
+        except Exception:
+            pass
     if row:
         d = json.loads(row[0])
         st.subheader(f"{d.get('symbol')} [{d.get('verdict')}] TIER-{d.get('tier', '?')} conf={d.get('confidence')}")

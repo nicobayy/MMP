@@ -16,6 +16,13 @@ log = logging.getLogger(__name__)
 
 TIMEOUT = 15
 
+
+def _redact(msg: str) -> str:
+    """M1: Helius memakai ?api-key= di URL (wajib oleh API-nya) — jangan
+    biarkan key bocor ke log/stdout via str(exception) yang memuat URL."""
+    import re
+    return re.sub(r"(api-key=)[^&\s'\"]+", r"\1***", msg or "")
+
 def api_key() -> str:
     return os.getenv("HELIUS_API_KEY", "").strip().strip('"').strip("'")
 
@@ -53,7 +60,7 @@ def get_mint_info(mint: str) -> dict:
             "freeze_authority": parsed.get("freezeAuthority"),
         }
     except Exception as e:
-        log.warning("helius get_mint_info gagal: %s", str(e)[:160])
+        log.warning("helius get_mint_info gagal: %s", _redact(str(e))[:160])
         return {}
 
 def get_top_holders(mint: str, limit: int = 20) -> list[dict]:
@@ -63,7 +70,7 @@ def get_top_holders(mint: str, limit: int = 20) -> list[dict]:
         vals = (res or {}).get("value", [])[:limit]
         return [{"address": v.get("address"), "amount_raw": float(v.get("amount", 0))} for v in vals]
     except Exception as e:
-        log.warning("helius get_top_holders gagal: %s", str(e)[:160])
+        log.warning("helius get_top_holders gagal: %s", _redact(str(e))[:160])
         return []
 
 def get_signatures(address: str, limit: int = 20) -> list[str]:
@@ -72,7 +79,7 @@ def get_signatures(address: str, limit: int = 20) -> list[str]:
         res = rpc("getSignaturesForAddress", [address, {"limit": max(1, min(int(limit), 100))}])
         return [s.get("signature", "") for s in (res or []) if s.get("signature")]
     except Exception as e:
-        log.warning("helius get_signatures gagal: %s", str(e)[:160])
+        log.warning("helius get_signatures gagal: %s", _redact(str(e))[:160])
         return []
 
 def parse_enhanced(signatures: list[str]) -> list[dict]:
@@ -91,7 +98,7 @@ def parse_enhanced(signatures: list[str]) -> list[dict]:
         out = r.json()
         return out if isinstance(out, list) else []
     except Exception as e:
-        log.warning("helius enhanced parse gagal: %s", str(e)[:160])
+        log.warning("helius enhanced parse gagal: %s", _redact(str(e))[:160])
         return []
 
 SOL_MINT = "So11111111111111111111111111111111111111112"
@@ -141,7 +148,7 @@ def get_accounts_owners(addresses: list[str]) -> dict[str, str]:
         res = rpc("getMultipleAccounts", [addresses, {"encoding": "jsonParsed"}])
         vals = (res or {}).get("value", [])
     except Exception as e:
-        log.warning("helius getMultipleAccounts gagal: %s", str(e)[:160])
+        log.warning("helius getMultipleAccounts gagal: %s", _redact(str(e))[:160])
         return {}
     out: dict[str, str] = {}
     for addr, info in zip(addresses, vals):

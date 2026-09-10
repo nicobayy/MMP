@@ -43,11 +43,16 @@ def _get(path: str, retries: int = RETRIES) -> Any:
 
 def get_token_pairs(chain: str, token_address: str) -> list[dict]:
     """GET /latest/dex/tokens/{tokenAddress} -> list pairs (lintas chain)."""
-    key = f"pairs:{token_address}"
+    addr = (token_address or "").strip()
+    ch = (chain or "any").strip() or "any"
+    # H1: cache key WAJIB menyertakan chain — address EVM yang sama bisa
+    # hidup di base dan bsc sekaligus; key tanpa chain = data base dipakai
+    # untuk bsc (tabrakan lintas chain).
+    key = f"pairs:{ch}:{addr}"
     hit = _cache.get(key, 60)
     if hit is not None:
         return hit
-    data = _get(f"/latest/dex/tokens/{token_address}")
+    data = _get(f"/latest/dex/tokens/{addr}")
     pairs = data.get("pairs") or []
     if chain and chain != "any":
         pairs = [p for p in pairs if p.get("chainId") == chain]

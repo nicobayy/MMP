@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from mmp.backtest.engine import apply_costs  # noqa: E402
+from mmp.backtest.engine import apply_costs, effective_costs  # noqa: E402
 from mmp.backtest.replay import replay  # noqa: E402
 from mmp.collectors import ohlcv  # noqa: E402
 from mmp.config import db_path, load_config  # noqa: E402
@@ -50,9 +50,14 @@ def main():
         return
     for sid, sym, chain, token, entry, ts, payload in rows:
         try:
-            tier = json.loads(payload or "{}").get("tier", 1)
+            _d = json.loads(payload or "{}")
+            tier = _d.get("tier", 1)
+            # M4: biaya mengikuti likuiditas entry sinyal itu.
+            _liq = ((_d.get("meta") or {}).get("liquidity") or {}).get("liquidity_usd")
+            _slip, _fee = effective_costs(_liq, slip, fee, cfg)
         except Exception:
             tier = 1
+            _slip, _fee = slip, fee
         pool = ohlcv.resolve_pool(chain, token)
         if not pool:
             print(f"- #{sid} {sym}: pool tak ditemukan, skip")
@@ -63,7 +68,7 @@ def main():
             cstore.upsert_candles(con, chain, pool, args.tf, candles)
         r = replay(_epoch(ts), float(entry or 0), sl_pct, tp_pct, candles,
                    timeout_h=float((cfg.get("paper") or {}).get("timeout_h", 72)))
-        r["pnl_pct"] = apply_costs(r["pnl_pct"], slip, fee)
+        r["pnl_pct"] = apply_costs(r["pnl_pct"], _slip, _fee)
         print(f"- #{sid} {sym} T{tier}: {r['status']} {r['pnl_pct']}% (MFE {r['mfe']}% MAE {r['mae']}% bars {r['bars']})")
 
 if __name__ == "__main__":

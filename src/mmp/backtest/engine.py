@@ -17,6 +17,37 @@ def apply_costs(pnl_pct: float, slippage_pct: float = 0.5, fee_pct: float = 0.2)
     """
     return round(pnl_pct - 2 * (abs(slippage_pct) + abs(fee_pct)), 2)
 
+
+def effective_costs(liq_usd: float | None, base_slip: float = 0.5,
+                    base_fee: float = 0.2, cfg: dict | None = None) -> tuple[float, float]:
+    """M4: biaya berjenjang likuiditas — token tipis bayar slippage lebih mahal.
+
+    Tier default (override via paper.cost_tiers = [[batas_liq, slip_pct], ...]
+    terurut naik; fee tetap base_fee):
+      liq < 50k  -> slip 2.0% (memecoin tipis, whipsaw + MEV)
+      liq < 100k -> slip 1.0%
+      lain       -> base_slip (config paper.slippage_pct)
+    Return (slip, fee). Jujur: tetap asumsi, bukan hasil ukur order book.
+    """
+    tiers = None
+    try:
+        tiers = (cfg.get("paper") or {}).get("cost_tiers") if cfg else None
+    except Exception:
+        tiers = None
+    if not tiers:
+        tiers = [[50000, 2.0], [100000, 1.0]]
+    try:
+        liq = float(liq_usd or 0)
+    except (TypeError, ValueError):
+        liq = 0.0
+    for bound, slip in sorted(tiers, key=lambda t: float(t[0])):
+        try:
+            if liq < float(bound):
+                return float(slip), float(base_fee)
+        except (TypeError, ValueError):
+            continue
+    return float(base_slip), float(base_fee)
+
 def settle(entry: float, now: float, sl_pct: float, tp_pct: float, timeout_hit: bool = False) -> dict:
     """Tentukan outcome satu posisi: TP hit / SL hit / open/timeout."""
     if not entry or not now:

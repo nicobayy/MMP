@@ -41,11 +41,18 @@ def _trust_of(row_trust: str, legacy_trusted: int) -> str:
         return row_trust
     return "trusted" if legacy_trusted else "untrusted"
 
+def normalize_handle(handle: str) -> str:
+    """L6: '@kanal' dan 'kanal' adalah akun yang sama. Normalisasi sekali
+    di titik tulis agar DB, dedup analyzer, dan stats konsisten."""
+    return (handle or "").strip().lstrip("@").lower()
+
+
 def add_callout(con: sqlite3.Connection, token: str, symbol: str = "", chain: str = "solana",
                 source: str = "telegram", handle: str = "", trusted: bool = False, note: str = "",
                 trust: str = "", reason: str = "") -> int:
     trust = trust if trust in TRUST_LEVELS else ("trusted" if trusted else "untrusted")
     reason = reason if reason in REASONS else ("other" if reason else "")
+    handle = normalize_handle(handle)
     cur = con.execute(
         "INSERT INTO kol_callouts(source, handle, token, symbol, chain, trusted, note, trust, reason)"
         " VALUES(?,?,?,?,?,?,?,?,?)",
@@ -90,6 +97,7 @@ def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
     win = pnl bersih > 0 (konsisten dgn backtest & wallet tracker).
     Tanpa data -> netral, bukan vonis.
     """
+    handle = normalize_handle(handle)
     try:
         rows = con.execute(
             "SELECT DISTINCT token FROM kol_callouts WHERE handle=?", (handle,)).fetchall()

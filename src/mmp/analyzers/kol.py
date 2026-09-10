@@ -12,7 +12,8 @@ def analyze_kol(pair: dict, callouts: list[dict] | None = None, cap: float = 100
         return 0.0, ["no KOL callout data"], {"callouts": 0}
     best: dict[str, float] = {}
     for c in callouts:
-        h = (c.get("handle") or "").strip().lower() or "(anon)"
+        # L6: normalisasi handle — '@kanal' dan 'kanal' adalah akun yang sama.
+        h = (c.get("handle") or "").strip().lstrip("@").lower() or "(anon)"
         if "weight" in c:
             w = float(c["weight"])
         else:

@@ -41,8 +41,9 @@ def test_kol_trust_tiers_and_reasons():
     koldb.add_callout(con, "M1", handle="@t", trust="trial", reason="whale_buy")
     koldb.add_callout(con, "M1", handle="@u", trust="untrusted", reason="launch")
     rows = {r["handle"]: r for r in koldb.recent_for_token(con, "M1", 48)}
-    assert rows["@t"]["trust"] == "trial" and rows["@t"]["reason"] == "whale_buy"
-    assert rows["@u"]["trust"] == "untrusted"
+    # L6: handle dinormalisasi tanpa '@' di titik tulis.
+    assert rows["t"]["trust"] == "trial" and rows["t"]["reason"] == "whale_buy"
+    assert rows["u"]["trust"] == "untrusted"
     assert koldb.handle_weight(con, "@t", "trial")[0] == 0.5
     assert koldb.handle_weight(con, "@u", "untrusted")[0] == 0.5
     # legacy boolean tetap jalan

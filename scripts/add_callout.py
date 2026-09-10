@@ -40,8 +40,10 @@ def main():
         if not rows:
             print("Belum ada callout untuk token itu.")
         for r in rows:
-            st = koldb.handle_stats(con, r["handle"]) if r["handle"] else {}
-            w, wlabel = koldb.handle_weight(con, r.get("handle", ""), r.get("trust", "trusted"))
+            # L4: recent_for_token return dict — akses via .get agar tahan refactor.
+            _h = r.get("handle", "")
+            st = koldb.handle_stats(con, _h) if _h else {}
+            w, wlabel = koldb.handle_weight(con, _h, r.get("trust", "trusted"))
             prec = f" prec={st.get('win_rate', 0):.0%} vol={st.get('calls', 0)}calls" if st.get("calls") else " (tanpa outcome)"
             print(f"[{r.get('trust', '?')}/{r.get('reason') or '-'} w={w} {wlabel}] {r['handle']} via {r['source']} @ {r['ts']}{prec}")
         return

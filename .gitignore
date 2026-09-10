@@ -9,6 +9,7 @@ data/*.db-shm
 data/*.db-journal
 data/*.html
 data/scheduler.lock
+data/cache.json
 *.egg-info/
 dist/
 build/

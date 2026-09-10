@@ -1,14 +1,17 @@
 """Signal dataclass + generator (orkestrasi full funnel)."""
 from __future__ import annotations
-from dataclasses import dataclass, field, asdict
-from ..analyzers import risk as risk_an
+
+from dataclasses import asdict, dataclass, field
+
+from ..analyzers import kol as kol_an
 from ..analyzers import liquidity as liq_an
-from ..analyzers import token_metrics as tm_an
+from ..analyzers import risk as risk_an
 from ..analyzers import smart_money as sm_an
 from ..analyzers import smart_money_auto as sma_an
-from ..analyzers import kol as kol_an
-from . import scoring as sc
+from ..analyzers import token_metrics as tm_an
 from . import gate as gt
+from . import scoring as sc
+
 
 @dataclass
 class Signal:

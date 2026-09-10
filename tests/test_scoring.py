@@ -1,7 +1,9 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from mmp.engine.scoring import weighted_score, apply_conservative_rules
+from mmp.engine.scoring import apply_conservative_rules, weighted_score
+
 
 def test_weighted():
     assert weighted_score({"a": 100, "b": 0}, {"a": 50, "b": 50}) == 50.0

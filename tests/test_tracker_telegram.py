@@ -1,9 +1,12 @@
-import sqlite3, sys
+import sqlite3
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from mmp.storage import wallets as wal
-from mmp.storage.store import should_alert, mark_alerted, SCHEMA
 from mmp.notifiers.telegram import format_signal, format_summary
+from mmp.storage import wallets as wal
+from mmp.storage.store import SCHEMA, mark_alerted, should_alert
+
 
 def test_wallet_winrate_and_trusted():
     con = sqlite3.connect(":memory:")

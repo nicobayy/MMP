@@ -6,8 +6,12 @@ Rate-limit ketat -> semua failure = {} (graceful).
 Docs: https://honeypot.is/
 """
 from __future__ import annotations
+
 import logging
+
 import requests
+
+from . import limits as _limits
 from . import meter as _meter
 
 log = logging.getLogger(__name__)
@@ -26,9 +30,15 @@ def check(chain: str, address: str) -> dict:
     cid = CHAIN_IDS.get(chain)
     if not cid or not address:
         return {}
+    if not _meter.allow("honeypot_is"):
+        return {}
+    params: dict[str, str | int] = {"address": address, "chainID": cid}
     try:
-        _meter.count("honeypot_is")
-        r = requests.get(f"{BASE}/IsHoneypot", params={"address": address, "chainID": cid}, timeout=TIMEOUT)
+        if not _meter.allow("honeypot_is"):
+            return {}
+        with _limits.guard("honeypot_is"):
+            _meter.count("honeypot_is")
+            r = requests.get(f"{BASE}/IsHoneypot", params=params, timeout=TIMEOUT)
         r.raise_for_status()
         return r.json() or {}
     except Exception as e:

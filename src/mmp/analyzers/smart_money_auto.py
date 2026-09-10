@@ -7,6 +7,7 @@ wallets_proxy: list kosong (tak ada wallet tracked) atau ringkasan distribusi.
 """
 from __future__ import annotations
 
+
 def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = None,
              trusted_overlap: int = 0, trusted_bonus: float | None = None):
     cfg = cfg or {}
@@ -28,39 +29,51 @@ def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = N
     # 1. Buy ratio sehat (organik) vs botted/dump
     lo, hi = float(sm_cfg.get("healthy_buy_ratio_min", 0.50)), float(sm_cfg.get("healthy_buy_ratio_max", 0.70))
     if total >= 50 and lo <= ratio <= hi:
-        score += 10; notes.append(f"buy ratio organik {ratio:.0%}")
+        score += 10
+        notes.append(f"buy ratio organik {ratio:.0%}")
     elif total >= 50 and ratio > 0.80:
-        score -= 10; notes.append(f"buy ratio {ratio:.0%} terlalu miring (botted?)")
+        score -= 10
+        notes.append(f"buy ratio {ratio:.0%} terlalu miring (botted?)")
     elif total >= 50 and ratio < 0.45:
-        score -= 10; notes.append(f"sell pressure {ratio:.0%}")
+        score -= 10
+        notes.append(f"sell pressure {ratio:.0%}")
 
     # 2. Aktivitas exit (proxy smart money masuk+keluar)
     if vl >= 2:
-        score += 10; notes.append(f"vol/liq {vl:.1f}x ramai")
+        score += 10
+        notes.append(f"vol/liq {vl:.1f}x ramai")
     elif vl < 1:
-        score -= 10; notes.append(f"vol/liq {vl:.1f}x sepi")
+        score -= 10
+        notes.append(f"vol/liq {vl:.1f}x sepi")
 
     # 3. Distribusi holder dari Helius (bila ada)
     top10 = he.get("top10_pct")
     top1 = he.get("top_holder_pct")
     if top10 is not None:
         if float(top10) < 25:
-            score += 15; notes.append(f"top10 {top10}% tersebar")
+            score += 15
+            notes.append(f"top10 {top10}% tersebar")
         elif float(top10) > 40:
-            score -= 15; notes.append(f"top10 {top10}% pekat (bandar?)")
+            score -= 15
+            notes.append(f"top10 {top10}% pekat (bandar?)")
         else:
-            score += 5; notes.append(f"top10 {top10}% wajar")
+            score += 5
+            notes.append(f"top10 {top10}% wajar")
     else:
         notes.append("tanpa data holder Helius (cap konservatif)")
     if top1 is not None and float(top1) > float(sm_cfg.get("max_top_holder_pct", 15.0)):
-        score -= 20; notes.append(f"top1 {top1}% dominan -> risiko dump")
+        score -= 20
+        notes.append(f"top1 {top1}% dominan -> risiko dump")
     if he.get("mint_renounced") is True:
-        score += 5; notes.append("mint renounced +")
+        score += 5
+        notes.append("mint renounced +")
     elif he.get("mint_renounced") is False:
-        score -= 10; notes.append("mint masih aktif (mintable)")
+        score -= 10
+        notes.append("mint masih aktif (mintable)")
     labels = [str(x).lower() for x in (he.get("labels") or [])]
     if "freezable-risk" in labels:
-        score -= 10; notes.append("freeze authority aktif (bisa bekukan holder)")
+        score -= 10
+        notes.append("freeze authority aktif (bisa bekukan holder)")
 
     # 4. Bonus wallet terpercaya (dari tracker DB, bukan klaim kosong).
     # trusted_bonus = jumlah confidence*5 per wallet overlap (proporsional);
@@ -68,7 +81,8 @@ def discover(pair: dict, helius_enrich: dict | None = None, cfg: dict | None = N
     if trusted_overlap > 0:
         bonus = min(float(trusted_bonus), 15.0) if trusted_bonus is not None \
             else min(trusted_overlap * 5.0, 15.0)
-        score += bonus; notes.append(f"{trusted_overlap}x trusted wallet overlap +{bonus:.1f}")
+        score += bonus
+        notes.append(f"{trusted_overlap}x trusted wallet overlap +{bonus:.1f}")
 
     score = max(0.0, min(max_score, score))
     meta = {"auto_score": round(score, 2), "buy_ratio": round(ratio, 3),

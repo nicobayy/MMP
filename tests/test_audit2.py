@@ -1,11 +1,13 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from mmp.engine.signal import generate, _dual_check
 from mmp.analyzers import risk as risk_an
 from mmp.collectors import helius as hel
 from mmp.collectors import prices as pxr
 from mmp.config import load_config
+from mmp.engine.signal import _dual_check, generate
+
 
 def _ideal(chain="solana"):
     return {'chainId': chain, 'dexId': 'raydium', 'pairAddress': 'P', 'pairCreatedAt': 1000000000000,
@@ -90,7 +92,7 @@ def test_price_fallback_chain(monkeypatch):
     monkeypatch.setattr(dexmod, "get_token_pairs", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("dex down")))
     monkeypatch.setattr(dexmod, "get_pair", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("dex down")))
     monkeypatch.setattr(gmod, "get_token_pools",
-                        lambda c, a, l=1: [{"attributes": {"address": "0xp", "name": "F / USDC",
+                        lambda c, a, lim=1: [{"attributes": {"address": "0xp", "name": "F / USDC",
                                                            "base_token_price_usd": "2.5", "reserve_in_usd": "1000",
                                                            "volume_usd": {}, "transactions": {},
                                                            "price_change_percentage": {}}}])

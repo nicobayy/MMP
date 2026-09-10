@@ -4,9 +4,13 @@ Semua failure -> {} (graceful, jangan bunuh scan).
 Docs: https://docs.birdeye.so/
 """
 from __future__ import annotations
+
 import logging
 import os
+
 import requests
+
+from . import limits as _limits
 from . import meter as _meter
 
 log = logging.getLogger(__name__)
@@ -21,10 +25,13 @@ def has_key() -> bool:
     return bool(api_key())
 
 def _get(path: str, params: dict | None = None):
-    _meter.count("birdeye")
-    r = requests.get(f"{BASE}{path}", params=params or {},
-                     headers={"X-API-KEY": api_key(), "accept": "application/json"},
-                     timeout=TIMEOUT)
+    if not _meter.allow("birdeye"):
+        raise RuntimeError("budget birdeye habis (circuit breaker)")
+    with _limits.guard("birdeye"):
+        _meter.count("birdeye")
+        r = requests.get(f"{BASE}{path}", params=params or {},
+                         headers={"X-API-KEY": api_key(), "accept": "application/json"},
+                         timeout=TIMEOUT)
     r.raise_for_status()
     return r.json()
 

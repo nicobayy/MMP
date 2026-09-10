@@ -1,6 +1,9 @@
 """MMP Dashboard — baca data/mmp.db, filter PASS/chain, tanpa perlu API key."""
 from __future__ import annotations
-import json, sqlite3, sys
+
+import json
+import sqlite3
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -18,10 +21,24 @@ st.caption("Precision-first • Solana prioritas, multi-chain • Konservatif: R
 def load_df(path: str) -> pd.DataFrame:
     con = sqlite3.connect(path)
     try:
-        df = pd.read_sql_query("SELECT id, ts, verdict, symbol, chain, token, pair_addr, price, confidence, reason FROM signals ORDER BY id DESC LIMIT 1000", con)
+        df = pd.read_sql_query("SELECT id, ts, verdict, symbol, chain, token, pair_addr, price, confidence, reason, payload FROM signals ORDER BY id DESC LIMIT 1000", con)
     except Exception:
         df = pd.DataFrame()
     con.close()
+    if not df.empty:
+        def _tier(p):
+            try:
+                d = json.loads(p)
+                return int(d.get("tier", 1 if d.get("verdict") == "PASS" else 0))
+            except Exception:
+                return 0
+        def _grade(p):
+            try:
+                return str(json.loads(p).get("meta", {}).get("data_grade", "?"))
+            except Exception:
+                return "?"
+        df["tier"] = df["payload"].map(_tier)
+        df["grade"] = df["payload"].map(_grade)
     return df
 
 db = db_path()
@@ -45,7 +62,7 @@ m2.metric("PASS", int((f["verdict"] == "PASS").sum()))
 m3.metric("PASS rate (bukan precision)", f"{(f['verdict']=='PASS').mean()*100:.1f}%" if len(f) else "—")
 m4.metric("Avg conf", f"{f['confidence'].mean():.1f}" if len(f) else "—")
 
-st.dataframe(f, use_container_width=True, hide_index=True)
+st.dataframe(f.drop(columns=["payload"], errors="ignore"), use_container_width=True, hide_index=True)
 
 sel = st.selectbox("Detail sinyal (id)", f["id"].tolist()[:100] if len(f) else [])
 if sel:
@@ -54,7 +71,9 @@ if sel:
     con.close()
     if row:
         d = json.loads(row[0])
-        st.subheader(f"{d.get('symbol')} [{d.get('verdict')}] conf={d.get('confidence')}")
+        st.subheader(f"{d.get('symbol')} [{d.get('verdict')}] TIER-{d.get('tier', '?')} conf={d.get('confidence')}")
         st.json({"scores": d.get("scores"), "vetoes": d.get("vetoes"), "plan": d.get("plan"), "meta": d.get("meta"), "notes": d.get("notes")})
+        dual = (d.get("meta") or {}).get("dual") or {}
+        st.info(f"Dual-source: {'OK' if dual.get('ok') else 'TIDAK'} — {dual.get('note', '-')} | Data grade: {(d.get('meta') or {}).get('data_grade', '?')}")
         if (d.get("meta") or {}).get("url"):
             st.link_button("Buka DexScreener", d["meta"]["url"])

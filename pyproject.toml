@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mmp"
+version = "0.2.0"
+description = "MMP (Melok Melok Profit) — precision-first multi-chain trading intelligence"
+requires-python = ">=3.12"
+dependencies = [
+  "requests==2.34.2",
+  "pyyaml==6.0.3",
+  "pydantic==2.13.5",
+  "python-dotenv==1.2.3",
+  "streamlit==1.63.0",
+  "pandas==3.0.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "ruff", "mypy"]
+
+[project.scripts]
+mmp-scan = "mmp.cli:scan"
+mmp-paper = "mmp.cli:paper"
+mmp-backtest = "mmp.cli:backtest"
+mmp-scheduler = "mmp.cli:scheduler"
+mmp-callout = "mmp.cli:callout"
+mmp-wallets = "mmp.cli:wallets"
+mmp-telegram-test = "mmp.cli:telegram_test"
+mmp-killswitch = "mmp.cli:killswitch"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*.py" = ["E402"]
+"tests/*.py" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+show_error_codes = true
+exclude = ["tests/"]

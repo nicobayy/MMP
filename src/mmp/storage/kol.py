@@ -4,6 +4,7 @@ Alur: catat callout manual via scripts/add_callout.py
  trusted channel berbobot lebih — anti FOMO dari 1 akun random).
 """
 from __future__ import annotations
+
 import sqlite3
 
 SCHEMA = """
@@ -31,7 +32,8 @@ def add_callout(con: sqlite3.Connection, token: str, symbol: str = "", chain: st
         " VALUES(?,?,?,?,?,?,?)",
         (source, handle, token, symbol, chain, 1 if trusted else 0, note))
     con.commit()
-    return int(cur.lastrowid)
+    rid = cur.lastrowid
+    return int(rid) if rid is not None else 0
 
 def recent_for_token(con: sqlite3.Connection, token: str, hours: int = 48) -> list[dict]:
     try:

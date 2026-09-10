@@ -1,6 +1,7 @@
 """Position sizing + TP/SL + expectancy check."""
 from __future__ import annotations
 
+
 def build_plan(entry: float, cfg: dict) -> dict:
     p = cfg["position"]
     sl_pct = float(p["default_stop_loss_pct"])

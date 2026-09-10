@@ -3,9 +3,11 @@ Kill switch = file data/STOP (atau $MMP_STOP). Ada file = semua run abort.
 Portfolio guard = batas portofolio sebelum paper-open / alert baru.
 """
 from __future__ import annotations
+
 import os
 import sqlite3
 from pathlib import Path
+
 
 def stop_file() -> Path:
     return Path(os.getenv("MMP_STOP", "data/STOP"))

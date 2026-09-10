@@ -3,7 +3,10 @@ Usage: python scripts/scheduler.py --interval-min 60 --limit 5 --chains solana,b
 Berhentikan dengan Ctrl+C. Untuk 24/7 pakai Windows Task Scheduler (lihat README).
 """
 from __future__ import annotations
-import subprocess, sys, time
+
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

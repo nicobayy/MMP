@@ -119,6 +119,30 @@ portfolio:
 
 backtest:
   note: "forward-measure entry->live, bukan klaim masa lalu"
+  replay_tf: hour             # timeframe candle replay (minute/hour/day)
+  replay_limit: 500           # max candle per fetch GeckoTerminal
+  min_n_per_bucket: 5        # di bawah ini = EXPLORATORY, bukan kesimpulan
 
 scheduler:
   interval_min: 60
+
+api_budgets:
+  # Circuit breaker per run (scheduler = per round, proses baru tiap round).
+  # Trip -> collector fail-closed + warning, bukan crash. 0/absen = unlimited.
+  helius: 300
+  birdeye: 120
+  honeypot_is: 80
+  geckoterminal: 120
+  dexscreener: 600
+
+concurrency:
+  # Pool boleh besar; tiap sumber API dibatasi sendiri via semaphore
+  # agar tak mempercepat kena rate-limit. 1 = sekuensial (mode lama).
+  scan_workers: 4
+  universe_workers: 4
+  per_source:
+    dexscreener: 4
+    helius: 3
+    birdeye: 2
+    honeypot_is: 2
+    geckoterminal: 3

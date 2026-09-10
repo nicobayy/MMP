@@ -5,6 +5,7 @@ dengan simulasi TP/SL/time-stop. Bukan klaim win-rate masa lalu.
 """
 from __future__ import annotations
 
+
 def expectancy(winrate: float, avg_win: float, avg_loss: float) -> float:
     """E = p*W - (1-p)*L. Harus > 0 agar layak."""
     return winrate * avg_win - (1 - winrate) * avg_loss

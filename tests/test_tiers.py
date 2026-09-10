@@ -1,12 +1,14 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import sqlite3
+
+from mmp.config import load_config
 from mmp.engine import gate as gt
 from mmp.engine.signal import generate
-from mmp.config import load_config
-from mmp.storage import paper as pstore
 from mmp.notifiers.telegram import format_signal
+from mmp.storage import paper as pstore
 
 CFG = {"signal": {"min_confidence": 85, "require_smart_money": True, "require_kol_or_sm": True},
        "tiers": {"tier2_min": 75, "tier2_size_pct": 0.5, "tier2_require_dual_source": True}}

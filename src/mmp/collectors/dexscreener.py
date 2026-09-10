@@ -2,11 +2,15 @@
 Docs: https://docs.dexscreener.com/api/reference
 """
 from __future__ import annotations
-import requests
+
+import logging
 import time
 from typing import Any
-import logging
+
+import requests
+
 from . import cache as _cache
+from . import limits as _limits
 from . import meter as _meter
 
 log = logging.getLogger(__name__)
@@ -16,11 +20,14 @@ TIMEOUT = 15
 RETRIES = 2
 
 def _get(path: str, retries: int = RETRIES) -> Any:
+    if not _meter.allow("dexscreener"):
+        raise RuntimeError("budget dexscreener habis (circuit breaker)")
     last: Exception | None = None
     for attempt in range(retries + 1):
         try:
-            _meter.count("dexscreener")
-            r = requests.get(f"{BASE}{path}", timeout=TIMEOUT)
+            with _limits.guard("dexscreener"):
+                _meter.count("dexscreener")
+                r = requests.get(f"{BASE}{path}", timeout=TIMEOUT)
             r.raise_for_status()
             return r.json()
         except Exception as e:

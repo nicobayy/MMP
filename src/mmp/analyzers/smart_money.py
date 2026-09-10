@@ -6,6 +6,7 @@ agar scoring tidak perlu diubah.
 """
 from __future__ import annotations
 
+
 def analyze_smart_money(pair: dict, wallets: list[dict] | None = None) -> tuple[float, list[str], dict]:
     """wallets: [{address, label, net_buy_usd, txs}] — bila None/empty => missing."""
     if not wallets:

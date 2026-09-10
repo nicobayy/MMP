@@ -1,27 +1,33 @@
 """Entry point: python scripts/run_scan.py --help"""
 from __future__ import annotations
-import argparse, sys
+
+import argparse
+import logging
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mmp.config import load_config, db_path
-from mmp.collectors import dexscreener as dex
-from mmp.collectors import universe as uni
-from mmp.collectors import helius as hel
+from mmp import safety as guard
 from mmp.collectors import birdeye as bir
+from mmp.collectors import dexscreener as dex
 from mmp.collectors import geckoterminal as gecko
+from mmp.collectors import helius as hel
 from mmp.collectors import honeypot_is as hp
 from mmp.collectors import meter as _meter
+from mmp.collectors import universe as uni
+from mmp.config import db_path, load_config
 from mmp.engine.signal import generate
+from mmp.notifiers.telegram import format_signal, format_summary, send_telegram
 from mmp.risk.position import build_plan
-from mmp.storage.store import connect, save, should_alert, mark_alerted
-from mmp.storage import wallets as wal
 from mmp.storage import kol as koldb
 from mmp.storage import paper as pstore
-from mmp import safety as guard
-from mmp.notifiers.telegram import format_signal, format_summary, send_telegram
+from mmp.storage import wallets as wal
+from mmp.storage.store import connect, mark_alerted, save, should_alert
+
+log = logging.getLogger("mmp.run_scan")
+
 
 def enrichment_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
     he = helius_for_pair(pair, cfg, use_helius)
@@ -33,8 +39,8 @@ def enrichment_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
             be = bir.build_enrichment(mint)
             for k, v in be.items():
                 he.setdefault(k, v)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("birdeye enrichment skip: %s", str(e)[:160])
     # honeypot.is (EVM, gratis): isi tax + flag honeypot yang selama ini kosong.
     elif (cfg.get("honeypot_is") or {}).get("enabled", True):
         try:
@@ -45,8 +51,8 @@ def enrichment_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
                     he.setdefault("labels", []).extend(x for x in v if x not in he.setdefault("labels", []))
                 else:
                     he.setdefault(k, v)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("honeypot.is enrichment skip: %s", str(e)[:160])
     return he
 
 def helius_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
@@ -59,7 +65,8 @@ def helius_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
     mint = ((pair.get("baseToken") or {}).get("address")) or ""
     try:
         return hel.build_enrichment(mint, cfg)
-    except Exception:
+    except Exception as e:
+        log.debug("helius enrichment skip: %s", str(e)[:160])
         return {}
 
 def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
@@ -78,8 +85,10 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
             except Exception:
                 c["proven"] = False
         shilling_n = koldb.recent_handles_count(con, mint, int(kol_cfg.get("shill_window_hours", 6)))
-    except Exception:
-        kol_callouts = []; shilling_n = 0
+    except Exception as e:
+        log.debug("kol lookup skip: %s", str(e)[:160])
+        kol_callouts = []
+        shilling_n = 0
     # Tracker: overlap trusted wallet dengan bobot confidence (proporsional).
     n_overlap = 0
     w_bonus: float | None = None
@@ -92,8 +101,10 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
                 weights = {w: wal.stats(con, w).get("confidence", 0.5) for w in t}
                 b, n_overlap = wal.overlap_bonus(holders, t, weights=weights)
                 w_bonus = b
-        except Exception:
-            n_overlap = 0; w_bonus = None
+        except Exception as e:
+            log.debug("tracker overlap skip: %s", str(e)[:160])
+            n_overlap = 0
+            w_bonus = None
     sig = generate(pair, cfg, permissive=args.permissive, helius_enrich=he,
                    trusted_overlap=n_overlap, trusted_bonus=w_bonus,
                    kol_callouts=kol_callouts or None, shilling_n=shilling_n)
@@ -108,8 +119,8 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
         try:
             for acct in he["holder_accounts"][:10]:
                 wal.add_sighting(con, acct, sig.token_address, sig.symbol)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("wallet sighting skip: %s", str(e)[:160])
     print("=" * 70)
     print(f"[{sig.verdict}] {sig.symbol} {sig.chain} conf={sig.confidence} (min {sig.threshold}) | db#{row}")
     print(f"  reason: {sig.reason}")
@@ -154,6 +165,27 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict]:
             print(f"  paper: skip ({e})")
     return sig.verdict, sig_dict
 
+def _process_pair(job: dict) -> tuple[str, dict | None, str, str]:
+    """Proses 1 pair di worker thread: koneksi DB sendiri (SQLite tak boleh
+    berbagi koneksi lintas thread), output ditangkap agar print tetap rapi."""
+    import contextlib
+    import io
+    cfg, args, pair = job["cfg"], job["args"], job["pair"]
+    wcon = connect(db_path())
+    try:
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            v, d = handle_pair(pair, cfg, args, wcon)
+        return v, d, "", buf.getvalue()
+    except Exception as e:
+        return "ERROR", None, str(e)[:200], ""
+    finally:
+        try:
+            wcon.close()
+        except Exception:
+            pass
+
+
 def main():
     ap = argparse.ArgumentParser(description="MMP scanner — multi-chain, Solana prioritas")
     ap.add_argument("--token", help="Alamat token")
@@ -173,6 +205,9 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    _meter.set_budgets(cfg.get("api_budgets"))
+    from mmp.collectors import limits as _limits
+    _limits.configure((cfg.get("concurrency") or {}).get("per_source"))
     if guard.is_killed():
         print("ABORT: KILL SWITCH aktif (data/STOP ada). Matikan via scripts/killswitch.py --off.")
         return
@@ -184,14 +219,16 @@ def main():
     if args.pair and args.chain:
         pair = dex.get_pair(args.chain, args.pair)
         if not pair:
-            print("Pair tidak ditemukan."); return
+            print("Pair tidak ditemukan.")
+            return
         handle_pair(pair, cfg, args, con)
         return
 
     if args.token:
         pairs = dex.get_token_pairs(args.chain, args.token)
         if not pairs:
-            print("Token tidak ditemukan di DexScreener."); return
+            print("Token tidak ditemukan di DexScreener.")
+            return
         best = dex.pick_best_pair(pairs)
         print(f"Ditemukan {len(pairs)} pair, memakai yang paling likuid: {best.get('dexId')} {best.get('pairAddress')}")
         handle_pair(best, cfg, args, con)
@@ -214,18 +251,37 @@ def main():
         if not pairs:
             print("Universe kosong (semua sumber gagal). Coba lagi nanti.")
             return
+        # Dedup pair (boosts bisa memuat token yang sama 2x -> jangan scan & catat ganda).
+        uniq: list[dict] = []
+        seen_addr: set[str] = set()
+        for p in pairs:
+            a = p.get("pairAddress")
+            if a and a not in seen_addr:
+                seen_addr.add(a)
+                uniq.append(p)
+        pairs = uniq
         print(f"Scanning {len(pairs)} pairs chains={cfg['chains']['enabled']} (solana prioritas, permissive={args.permissive})...")
         if args.use_helius and not hel.has_key():
             print("NOTE: HELIUS_API_KEY kosong -> Helius off, auto-SM pakai DexScreener saja. Isi .env untuk akurasi Solana.")
+        workers = int((cfg.get("concurrency") or {}).get("scan_workers", 4))
+        results: list[tuple[str, dict | None, str, str]] = []
+        if workers > 1 and len(pairs) > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                results = list(ex.map(_process_pair, [dict(cfg=cfg, args=args, pair=p) for p in pairs]))
+        else:
+            results = [_process_pair(dict(cfg=cfg, args=args, pair=p)) for p in pairs]
         passes: list[dict] = []
-        for best in pairs:
-            try:
-                v, d = handle_pair(best, cfg, args, con)
-                n_pass += v == "PASS"; n_reject += v != "PASS"
-                if v == "PASS":
-                    passes.append(d)
-            except Exception as e:
-                print(f"- error {best.get('pairAddress')}: {e}"); n_reject += 1
+        for v, d, err, out in results:
+            print(out, end="")
+            if v == "ERROR":
+                print(f"- error: {err}")
+                n_reject += 1
+                continue
+            n_pass += v == "PASS"
+            n_reject += v != "PASS"
+            if v == "PASS" and d:
+                passes.append(d)
         print(f"\nRingkasan: PASS={n_pass} REJECT={n_reject} (konservatif = REJECT banyak itu NORMAL)")
         print(_meter.line())
         if args.notify and (cfg.get("telegram") or {}).get("send_summary", True):

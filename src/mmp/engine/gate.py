@@ -6,6 +6,7 @@ Size setengah, paper-wajib. Veto tetap membunuh semua tier.
 """
 from __future__ import annotations
 
+
 def decide(vetoes: list[str], confidence: float, cfg: dict,
            permissive: bool = False, dual_source: bool = False) -> tuple[str, str, float, int]:
     t1 = float(cfg["signal"]["min_confidence"])

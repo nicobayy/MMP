@@ -3,9 +3,11 @@ Satu sumber down tak lagi membutakan paper-settle & backtest.
 Return (price, source). Gagal semua -> (0.0, "none").
 """
 from __future__ import annotations
+
+from . import birdeye as bir
 from . import dexscreener as dex
 from . import geckoterminal as gecko
-from . import birdeye as bir
+
 
 def resolve_price(chain: str, token: str, pair_addr: str = "") -> tuple[float, str]:
     if token:

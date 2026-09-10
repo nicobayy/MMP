@@ -3,9 +3,13 @@ Dipakai sebagai universe fallback EVM + cross-check likuiditas/volume.
 Docs: https://api.geckoterminal.com/
 """
 from __future__ import annotations
+
 import logging
+
 import requests
+
 from . import cache as _cache
+from . import limits as _limits
 from . import meter as _meter
 
 log = logging.getLogger(__name__)
@@ -15,8 +19,11 @@ TIMEOUT = 15
 NETWORKS = {"ethereum": "eth", "bsc": "bsc", "base": "base", "solana": "solana"}
 
 def _get(path: str):
-    _meter.count("geckoterminal")
-    r = requests.get(f"{BASE}{path}", timeout=TIMEOUT, headers={"Accept": "application/json"})
+    if not _meter.allow("geckoterminal"):
+        raise RuntimeError("budget geckoterminal habis (circuit breaker)")
+    with _limits.guard("geckoterminal"):
+        _meter.count("geckoterminal")
+        r = requests.get(f"{BASE}{path}", timeout=TIMEOUT, headers={"Accept": "application/json"})
     r.raise_for_status()
     return r.json()
 

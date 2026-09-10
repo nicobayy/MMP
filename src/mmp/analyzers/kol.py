@@ -6,6 +6,7 @@ bukan menambahnya — hype massal serentak = distribusi, bukan akumulasi.
 """
 from __future__ import annotations
 
+
 def analyze_kol(pair: dict, callouts: list[dict] | None = None, cap: float = 100.0) -> tuple[float, list[str], dict]:
     if not callouts:
         return 0.0, ["no KOL callout data"], {"callouts": 0}

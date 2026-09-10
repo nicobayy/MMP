@@ -5,6 +5,7 @@ Outcome dicatat via scripts/record_outcome.py (manual dulu, auto nanti).
 Trusted = win_rate >= threshold dengan min_trades cukup.
 """
 from __future__ import annotations
+
 import sqlite3
 
 SCHEMA = """
@@ -47,14 +48,33 @@ def record_outcome(con: sqlite3.Connection, wallet: str, win: bool, pnl: float =
         con.execute("UPDATE wallets SET losses=losses+1, total_pnl=total_pnl+?, last_seen=CURRENT_TIMESTAMP WHERE wallet=?", (pnl, wallet))
     con.commit()
 
+def attribute_token_outcome(con: sqlite3.Connection, token: str, win: bool, pnl: float = 0.0) -> int:
+    """Tautkan hasil posisi ke SEMUA wallet yang tersight di token itu.
+    Dipanggil otomatis tiap paper close — win-rate wallet terbentuk sendiri,
+    simetris dengan KOL handle_stats. win = pnl bersih > 0 (konsisten dgn backtest).
+    Return jumlah wallet yang dicatat.
+    """
+    try:
+        rows = con.execute("SELECT DISTINCT wallet FROM wallet_sightings WHERE token=?", (token,)).fetchall()
+    except Exception:
+        return 0
+    n = 0
+    for (w,) in rows:
+        try:
+            record_outcome(con, w, win, pnl)
+            n += 1
+        except Exception:
+            continue
+    return n
+
 def stats(con: sqlite3.Connection, wallet: str) -> dict:
     row = con.execute("SELECT wins, losses, total_pnl FROM wallets WHERE wallet=?", (wallet,)).fetchone()
     if not row:
         return {"wins": 0, "losses": 0, "win_rate": 0.0, "total_pnl": 0.0}
-    w, l, p = row
-    t = w + l
-    return {"wins": w, "losses": l, "win_rate": round(w / t, 3) if t else 0.0, "total_pnl": p,
-            "confidence": confidence(w, l)}
+    w, loss_n, p = row
+    t = w + loss_n
+    return {"wins": w, "losses": loss_n, "win_rate": round(w / t, 3) if t else 0.0, "total_pnl": p,
+            "confidence": confidence(w, loss_n)}
 
 def confidence(wins: int, losses: int, shrink_n: int = 10) -> float:
     """Confidence 0..1 per wallet: win-rate yang disusutkan saat sampel kecil.

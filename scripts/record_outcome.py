@@ -4,14 +4,16 @@ Usage: python scripts/record_outcome.py --wallet ADDR --win --pnl 12.5
        python scripts/record_outcome.py --list
 """
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from mmp.config import db_path
-from mmp.storage.store import connect
 from mmp.storage import wallets as wal
+from mmp.storage.store import connect
+
 
 def main():
     import argparse
@@ -36,7 +38,8 @@ def main():
             print(f"{w} | {wins}W/{losses}L wr={wr:.0%} pnl={pnl}")
         return
     if not args.wallet or (not args.win and not args.loss):
-        ap.print_help(); return
+        ap.print_help()
+        return
     wal.record_outcome(con, args.wallet, win=args.win, pnl=args.pnl)
     print("OK:", wal.stats(con, args.wallet))
 

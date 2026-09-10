@@ -3,9 +3,13 @@ Fokus hemat kredit: sedikit RPC call, semua failure -> {} (graceful).
 Docs: https://docs.helius.dev/
 """
 from __future__ import annotations
+
 import logging
 import os
+
 import requests
+
+from . import limits as _limits
 from . import meter as _meter
 
 log = logging.getLogger(__name__)
@@ -22,8 +26,11 @@ def rpc_url() -> str:
     return f"https://mainnet.helius-rpc.com/?api-key={api_key()}"
 
 def rpc(method: str, params: list, timeout: int = TIMEOUT):
-    _meter.count("helius")
-    r = requests.post(rpc_url(), json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=timeout)
+    if not _meter.allow("helius"):
+        raise RuntimeError("budget helius habis (circuit breaker)")
+    with _limits.guard("helius"):
+        _meter.count("helius")
+        r = requests.post(rpc_url(), json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=timeout)
     r.raise_for_status()
     j = r.json()
     if "error" in j and j["error"]:
@@ -108,7 +115,8 @@ def build_enrichment(mint: str, cfg: dict | None = None) -> dict:
             for t in tops[:10]:
                 o = owners.get(t.get("address", ""))
                 if o and o not in seen:
-                    seen.add(o); uniq.append(o)
+                    seen.add(o)
+                    uniq.append(o)
             if uniq:
                 out["holder_accounts"] = uniq
         if mi.get("mint_authority") is None:

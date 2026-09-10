@@ -1,17 +1,18 @@
-import os, sys
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import sqlite3
+
 from mmp import safety as guard
-from mmp.storage.store import connect
-from mmp.storage import paper as pstore
+from mmp.analyzers import kol as kol_an
+from mmp.backtest.engine import apply_costs
+from mmp.collectors import cache as _cache
+from mmp.collectors import honeypot_is as hp
+from mmp.collectors import meter as _meter
 from mmp.storage import kol as koldb
 from mmp.storage import wallets as wal
-from mmp.backtest.engine import apply_costs
-from mmp.collectors import honeypot_is as hp
-from mmp.collectors import cache as _cache
-from mmp.collectors import meter as _meter
-from mmp.analyzers import kol as kol_an
+
 
 def _mem():
     con = sqlite3.connect(":memory:")
@@ -89,11 +90,14 @@ def test_kol_winrate_and_shilling():
     assert s == 40 + 2.5 * 20 and meta["trusted_eff"] == 2.5
 
 def test_cache_and_meter():
-    _cache.clear(); _meter.reset()
+    _cache.clear()
+    _meter.reset()
     assert _cache.get("k", 60) is None
     _cache.put("k", [1], ttl=60)
     assert _cache.get("k", 60) == [1]
-    _meter.count("dexscreener"); _meter.count("dexscreener")
+    _meter.count("dexscreener")
+    _meter.count("dexscreener")
     assert _meter.summary() == {"dexscreener": 2}
     assert "dexscreener=2" in _meter.line()
-    _meter.reset(); _cache.clear()
+    _meter.reset()
+    _cache.clear()

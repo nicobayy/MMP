@@ -3,15 +3,18 @@ Usage: python scripts/backtest.py --limit 50
 Jujur: ini forward-measure, bukan backtest candle. Untuk validasi expectancy awal.
 """
 from __future__ import annotations
-import json, sys
+
+import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from mmp.config import load_config, db_path
+from mmp.backtest.engine import apply_costs, settle, summarize
 from mmp.collectors import prices as pxr
+from mmp.config import db_path, load_config
 from mmp.storage.store import connect
-from mmp.backtest.engine import settle, summarize, apply_costs
+
 
 def main():
     import argparse

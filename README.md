@@ -63,9 +63,11 @@ tests/
 ## Cara Jalan (Python 3.12 — Windows / Linux / macOS)
 ```powershell
 cd MMP
-pip install -r requirements.txt
+pip install -r requirements.txt   # repro eksak: pip install -r requirements-lock.txt
 copy .env.example .env    # Windows — Linux/macOS: cp .env.example .env
 # isi HELIUS_API_KEY, BIRDEYE_API_KEY, TELEGRAM_BOT_TOKEN/CHAT_ID
+# Opsional (perintah ringkas): pip install -e . -> mmp-scan, mmp-paper,
+# mmp-backtest, mmp-scheduler, mmp-callout, mmp-wallets, mmp-telegram-test, mmp-killswitch
 # Scan 1 token Solana via address:
 python scripts/run_scan.py --token So11111111111111111111111111111111111111112 --chain solana
 # Scan multi-chain + Telegram + paper:
@@ -82,6 +84,10 @@ python scripts/add_callout.py --token MINT --symbol XYZ --handle @kanal --truste
 python scripts/paper.py --settle
 python scripts/paper.py --report
 python scripts/backtest.py --limit 50
+# Replay candle-accurate + kalibrasi bucket:
+python scripts/replay.py --limit 10
+python scripts/calibrate.py
+python scripts/ohlcv_check.py --chain base --pool 0xABC...
 # Dashboard:
 streamlit run dashboard/app.py
 # Jalankan test:
@@ -104,7 +110,25 @@ DB & histori di-mount via volume agar tak hilang tiap rebuild.
 - PnL paper/backtest = bersih setelah asumsi biaya (`paper.slippage_pct` + `fee_pct` per sisi).
   Asumsi default optimistis untuk memecoin tipis — naikkan bila spread lebar.
 - Single-operator tool: SQLite + cache in-memory cukup untuk 1 operator.
-  Bukan untuk multi-user / HFT. Eksekusi real (swap/MEV) di luar cakupan by design.
+  Concurrency via ThreadPool (pool besar, semaphore PER SUMBER di
+  `concurrency.per_source`) + koneksi DB per-thread; budget API per-run
+  di `api_budgets` (trip -> fail-closed, bukan crash).
+- Bukan untuk multi-user / HFT. Eksekusi real (swap/MEV) di luar cakupan by design.
+- Replay candle = estimasi optimistis-menengah (candle hourly menyembunyikan
+  whipsaw intra-jam; sentuhan TP+SL satu candle dimenangkan SL).
+
+## Log keputusan (ditolak/ditunda + syarat revisit)
+- **Scraper KOL otomatis: DITOLAK untuk kini.** Butuh kredensial Telegram /
+  API X berbayar + rapuh terhadap ToS/layout + risiko flag akun. Manual via
+  `add_callout.py` lebih stabil. Revisit bila volume callout manual sudah
+  tinggi. Yang otomatis: win-rate handle dari outcome paper.
+- **Eksekusi real: DITOLAK sampai paper >= 20 CLOSED** (syarat minimum untuk
+  MULAI evaluasi, bukan lampu hijau). Catatan: 20 sampel sangat kecil untuk
+  memecoin; hitung expectancy TERPISAH per tier (T1 vs T2) agar satu tier
+  negatif tak tersembunyi rata-rata. MEV/private-RPC jadi prasyarat saat tiba.
+- **OHLCV historis: forward-replay dulu.** Repo muda -> belum ada histori PASS
+  lama; pola utama = sinyal baru dicatat lalu candle diputar ke depan.
+  Kandungan histori gratis dicek via `scripts/ohlcv_check.py --chain --pool`.
 
 ## Konfigurasi
 Lihat `config/mmp_config.yaml`. Kunci:
@@ -115,6 +139,11 @@ Lihat `config/mmp_config.yaml`. Kunci:
   bukan honeypot). Konflik angka antar-sumber = bukan dual = REJECT.
 - `risk.*` — veto fatal (`mintable-risk`, `freezable-risk`, `honeypot` otomatis
   veto; `veto_on_blind: true` = buta data ikut veto, default false).
+- **PERINGATAN DEFAULT:** `veto_on_blind` default **false**, artinya token dengan
+  data keamanan buta total (grade BLIND, tanpa Helius/Birdeye/honeypot.is)
+  tetap masuk scoring biasa — hanya kena penalti skor + cap, bukan veto.
+  Ini pilihan sadar (agar sistem bisa jalan tanpa key), BUKAN kelalaian:
+  aktifkan `true` bila kamu mau mode paling ketat.
 - Setiap sinyal membawa `meta.data_grade` (COMPLETE/PARTIAL/BLIND) + `meta.dual`.
 - `portfolio.*` — guard max open/per-chain/daily-stop + kill switch `data/STOP`.
 - CI otomatis di `.github/workflows/ci.yml` (compile + pytest + secret hygiene).

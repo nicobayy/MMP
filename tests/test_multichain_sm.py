@@ -1,8 +1,10 @@
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from mmp.collectors import universe as uni
 from mmp.analyzers import smart_money_auto as sma
+from mmp.collectors import universe as uni
+
 
 def _pair(**kw):
     base = {"chainId": "solana", "liquidity": {"usd": 100000}, "volume": {"h24": 300000},

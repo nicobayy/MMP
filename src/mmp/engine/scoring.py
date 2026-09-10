@@ -1,6 +1,7 @@
 """Weighted scoring + conservative gate."""
 from __future__ import annotations
 
+
 def weighted_score(scores: dict[str, float], weights: dict[str, float]) -> float:
     total_w = sum(weights.values())
     s = sum(scores.get(k, 0) * w for k, w in weights.items()) / max(total_w, 1)

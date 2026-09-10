@@ -1,11 +1,15 @@
 """Export dashboard statis (tanpa install streamlit): python scripts/export_html.py"""
 from __future__ import annotations
-import sqlite3, sys, html
+
+import html
+import sqlite3
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from mmp.config import db_path
+
 
 def main():
     db = db_path()
@@ -15,7 +19,8 @@ def main():
         rows = con.execute("SELECT id, ts, verdict, symbol, chain, price, confidence, reason FROM signals ORDER BY id DESC LIMIT 200").fetchall()
         con.close()
     except Exception as e:
-        print(f"DB belum siap ({e})"); return
+        print(f"DB belum siap ({e})")
+        return
     trs = "\n".join(
         f"<tr><td>{r[0]}</td><td>{html.escape(str(r[1]))}</td><td>{html.escape(str(r[2]))}</td>"
         f"<td>{html.escape(str(r[3]))}</td><td>{html.escape(str(r[4]))}</td><td>{r[5]}</td><td>{r[6]}</td>"

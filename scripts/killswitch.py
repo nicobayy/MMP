@@ -5,13 +5,15 @@ Usage:
   python scripts/killswitch.py --status
 """
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from mmp.safety import stop_file, is_killed  # noqa: E402
 from mmp.notifiers.telegram import send_telegram  # noqa: E402
+from mmp.safety import is_killed, stop_file  # noqa: E402
+
 
 def main():
     import argparse

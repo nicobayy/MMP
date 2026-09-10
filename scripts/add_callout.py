@@ -4,14 +4,16 @@ Usage:
   python scripts/add_callout.py --list --token MINT
 """
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from mmp.config import db_path
-from mmp.storage.store import connect
 from mmp.storage import kol as koldb
+from mmp.storage.store import connect
+
 
 def main():
     import argparse
@@ -37,7 +39,8 @@ def main():
             print(f"[{'TRUSTED' if r['trusted'] else 'biasa'}{' PROVEN' if st.get('proven') else ''}] {r['handle']} via {r['source']} @ {r['ts']}{wr}")
         return
     if not args.token:
-        ap.print_help(); return
+        ap.print_help()
+        return
     rid = koldb.add_callout(con, args.token, args.symbol, args.chain, args.source, args.handle, args.trusted, args.note)
     print(f"OK callout #{rid} tersimpan (trusted={args.trusted}). Skor KOL aktif 48 jam ke depan.")
 

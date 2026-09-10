@@ -2,6 +2,7 @@
 Tujuan: bukti expectancy sebelum uang asli dipakai.
 """
 from __future__ import annotations
+
 import sqlite3
 
 SCHEMA = """
@@ -32,9 +33,10 @@ def open_from_signal(con: sqlite3.Connection, sig: dict, risk_pct: float = 1.0) 
         " VALUES(?,?,?,?,?,?,?,?,?,?)",
         (sig.get("db_id", 0), sig.get("symbol", ""), sig.get("chain", ""), sig.get("token_address", ""),
          sig.get("pair_address", ""), sig.get("price_usd", 0), plan.get("stop_loss", 0),
-         plan.get("take_profit", 0), risk_pct, int(sig.get("tier", 1))))
+         plan.get("take_profit", 0), risk_pct, int(sig.get("tier") or 1)))
     con.commit()
-    return int(cur.lastrowid)
+    rid = cur.lastrowid
+    return int(rid) if rid is not None else 0
 
 def list_open(con: sqlite3.Connection) -> list[dict]:
     rows = con.execute("SELECT id, symbol, chain, token, pair_addr, entry, sl, tp, opened_ts FROM paper_positions WHERE status='OPEN'").fetchall()

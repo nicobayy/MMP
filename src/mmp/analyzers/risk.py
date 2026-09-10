@@ -4,7 +4,9 @@ Data yang belum tersedia (holder, LP lock) TIDAK jadi veto,
 tapi mengurangi skor via penalti agar tetap konservatif.
 """
 from __future__ import annotations
+
 from datetime import datetime, timezone
+
 
 def _pair_age_minutes(pair: dict) -> float | None:
     ts = pair.get("pairCreatedAt")
@@ -106,12 +108,16 @@ def risk_safety_score(pair: dict, enrichment: dict | None = None) -> tuple[float
     score = 100.0
     notes: list[str] = []
     if enrichment.get("holders") is None:
-        score -= 15; notes.append("no holder data (-15)")
+        score -= 15
+        notes.append("no holder data (-15)")
     if enrichment.get("lp_lock_pct") is None:
-        score -= 15; notes.append("no LP-lock data (-15)")
+        score -= 15
+        notes.append("no LP-lock data (-15)")
     if enrichment.get("buy_tax") is None:
-        score -= 10; notes.append("no tax data (-10)")
+        score -= 10
+        notes.append("no tax data (-10)")
     labels = enrichment.get("labels") or []
     if labels:
-        score -= 10; notes.append(f"labels: {labels} (-10)")
+        score -= 10
+        notes.append(f"labels: {labels} (-10)")
     return max(score, 0.0), notes

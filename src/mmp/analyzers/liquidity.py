@@ -3,6 +3,7 @@ Pertanyaan inti: kalau kita masuk, bisa keluar dengan slippage wajar?
 """
 from __future__ import annotations
 
+
 def analyze_exit(pair: dict, cfg: dict) -> tuple[float, list[str], dict]:
     liq_cfg = cfg["liquidity"]
     liq = float(((pair.get("liquidity") or {}).get("usd")) or 0)
@@ -18,17 +19,22 @@ def analyze_exit(pair: dict, cfg: dict) -> tuple[float, list[str], dict]:
     score = 100.0
     notes: list[str] = []
     if liq < liq_cfg["min_liquidity_usd"]:
-        score -= 50; notes.append(f"liq rendah ${liq:,.0f}")
+        score -= 50
+        notes.append(f"liq rendah ${liq:,.0f}")
     elif liq < liq_cfg["min_liquidity_usd"] * 3:
-        score -= 15; notes.append(f"liq tipis ${liq:,.0f}")
+        score -= 15
+        notes.append(f"liq tipis ${liq:,.0f}")
     if ratio < liq_cfg["min_volume_to_liquidity_ratio"]:
-        score -= 25; notes.append(f"vol/liq rendah {ratio:.2f} (sepi, susah exit)")
+        score -= 25
+        notes.append(f"vol/liq rendah {ratio:.2f} (sepi, susah exit)")
     else:
         notes.append(f"vol/liq sehat {ratio:.2f}")
     if impact_1k > liq_cfg["max_price_impact_1sol_pct"]:
-        score -= 20; notes.append(f"impact $1k {impact_1k:.1f}% (slippage besar)")
+        score -= 20
+        notes.append(f"impact $1k {impact_1k:.1f}% (slippage besar)")
     if vol_h1 < 1000:
-        score -= 10; notes.append("vol h1 sangat kecil")
+        score -= 10
+        notes.append("vol h1 sangat kecil")
     notes.append(f"{dex_id} @ {chain}")
 
     meta = {"liquidity_usd": liq, "vol_h24": vol_h24, "vol_h1": vol_h1,

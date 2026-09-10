@@ -6,17 +6,21 @@ Usage:
   python scripts/paper.py --report            # expectancy dari posisi closed
 """
 from __future__ import annotations
-import json, sqlite3, sys
+
+import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from mmp.config import load_config, db_path
+from mmp.backtest.engine import apply_costs, settle, summarize
 from mmp.collectors import prices as pxr
-from mmp.storage.store import connect
+from mmp.config import db_path, load_config
 from mmp.storage import paper as pstore
-from mmp.backtest.engine import settle, summarize, apply_costs
+from mmp.storage import wallets as wal
+from mmp.storage.store import connect
+
 
 def live_price(chain: str, pair_addr: str, token: str = "") -> float:
     px, _src = pxr.resolve_price(chain, token, pair_addr)
@@ -42,6 +46,7 @@ def main():
     cfg = load_config()
     con = connect(db_path())
     pstore.init(con)
+    wal.init(con)
     sl_pct = float(cfg["position"]["default_stop_loss_pct"])
     tp_pct = float(cfg["position"]["default_take_profit_pct"])
     slip = float((cfg.get("paper") or {}).get("slippage_pct", 0.5))
@@ -60,13 +65,16 @@ def main():
         for o in pstore.list_open(con):
             px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
             if not px:
-                print(f"- skip {o['symbol']}: harga tak tersedia"); continue
+                print(f"- skip {o['symbol']}: harga tak tersedia")
+                continue
             timed_out = age_hours(o.get("opened_ts", "")) >= timeout_h
             r = settle(o["entry"], px, sl_pct, tp_pct, timeout_hit=timed_out)
             if r["status"] in ("TP", "SL", "TIMEOUT"):
                 net = apply_costs(r["pnl_pct"], slip, fee)
                 pstore.close_position(con, o["id"], px, net, r["status"])
-                print(f"- closed #{o['id']} {o['symbol']} {r['status']} {net}% (gross {r['pnl_pct']}%)"); n += 1
+                fed = wal.attribute_token_outcome(con, o.get("token", ""), net > 0, net) if o.get("token") else 0
+                print(f"- closed #{o['id']} {o['symbol']} {r['status']} {net}% (gross {r['pnl_pct']}%, wallets fed: {fed})")
+                n += 1
             else:
                 print(f"- open #{o['id']} {o['symbol']} {r['pnl_pct']}%")
         print(f"Settled {n} posisi (timeout {timeout_h}h).")

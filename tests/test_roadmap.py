@@ -1,11 +1,14 @@
-import sqlite3, sys
+import sqlite3
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from mmp.collectors import geckoterminal as gecko
+from mmp.backtest.engine import expectancy, settle, summarize
 from mmp.collectors import birdeye as bir
+from mmp.collectors import geckoterminal as gecko
 from mmp.storage import kol as koldb
 from mmp.storage import paper as pstore
-from mmp.backtest.engine import settle, summarize, expectancy
+
 
 def test_gecko_pool_normalize_offline():
     pool = {"attributes": {"address": "0xabc", "name": "FOO / USDC", "dex_id": "uniswap",

@@ -1,9 +1,0 @@
-[console_scripts]
-mmp-backtest = mmp.cli:backtest
-mmp-callout = mmp.cli:callout
-mmp-killswitch = mmp.cli:killswitch
-mmp-paper = mmp.cli:paper
-mmp-scan = mmp.cli:scan
-mmp-scheduler = mmp.cli:scheduler
-mmp-telegram-test = mmp.cli:telegram_test
-mmp-wallets = mmp.cli:wallets

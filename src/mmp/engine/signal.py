@@ -56,7 +56,11 @@ def _dual_check(pair: dict, enrichment: dict, cfg: dict) -> tuple[bool, str]:
         except (TypeError, ValueError):
             return False, "angka tak valid"
         for name, a, b in checks:
-            if a > 0 and b > 0 and max(a, b) / min(a, b) > tol:
+            # Fail-closed: sisi pembanding yang hilang/nol = TAK BISA diverifikasi,
+            # bukan "setuju". Jangan lewati diam-diam.
+            if a <= 0 or b <= 0:
+                return False, f"tak bisa verifikasi {name} (data timpang)"
+            if max(a, b) / min(a, b) > tol:
                 return False, f"konflik {name} {max(a, b) / min(a, b):.1f}x > {tol}x"
         return True, "Helius+Birdeye setuju"
     if not en.get("source_honeypot_is"):

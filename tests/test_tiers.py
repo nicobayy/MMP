@@ -35,7 +35,8 @@ def _ideal():
 def test_generate_tier2_needs_dual_source():
     cfg = load_config()
     he = {'top10_pct': 15.0, 'top_holder_pct': 5.0, 'mint_renounced': True,
-          'holder_accounts': ['A1'], 'holders': 5000}  # Helius + Birdeye
+          'holder_accounts': ['A1'], 'holders': 5000,
+          'birdeye_mcap': 2100000, 'birdeye_liq': 190000}  # Helius + Birdeye setuju
     s = generate(_ideal(), cfg, helius_enrich=he, trusted_overlap=2)
     assert (s.verdict, s.tier) == ("PASS", 2), s.reason
     he_nobirdeye = {k: v for k, v in he.items() if k != 'holders'}

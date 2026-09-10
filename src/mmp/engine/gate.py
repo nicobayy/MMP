@@ -12,10 +12,12 @@ def decide(vetoes: list[str], confidence: float, cfg: dict,
     t1 = float(cfg["signal"]["min_confidence"])
     tiers = cfg.get("tiers") or {}
     t2 = float(tiers.get("tier2_min", 75))
+    if vetoes:
+        # Veto PALING ATAS, di semua mode incl. permissive: token berbahaya
+        # tak boleh lolos sebagai PASS dengan alasan apa pun.
+        return "REJECT", "VETO: " + "; ".join(vetoes[:4]), t1, 0
     if permissive:
         return "PASS", f"confidence {confidence} >= 65.0 (permissive)", 65.0, 1
-    if vetoes:
-        return "REJECT", "VETO: " + "; ".join(vetoes[:4]), t1, 0
     if confidence >= t1:
         return "PASS", f"confidence {confidence} >= {t1} (TIER-1)", t1, 1
     if confidence >= t2:

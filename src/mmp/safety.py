@@ -32,9 +32,12 @@ def open_per_chain(con: sqlite3.Connection) -> dict[str, int]:
         return {}
 
 def realized_today(con: sqlite3.Connection) -> float:
-    """Jumlah pnl_pct posisi yang ditutup hari ini (proksi kasar, bukan Rp)."""
+    """Rugi/laba hari ini TERTIMBANG MODAL: sum(pnl_pct * risk_pct).
+    Bukan sum pnl_pct mentah — posisi half-size (TIER-2) membebani modal
+    lebih ringan daripada full-size. Satuan: poin risiko, bukan rupiah.
+    """
     try:
-        row = con.execute("SELECT COALESCE(SUM(pnl_pct),0) FROM paper_positions"
+        row = con.execute("SELECT COALESCE(SUM(pnl_pct * risk_pct),0) FROM paper_positions"
                           " WHERE status='CLOSED' AND date(closed_ts)=date('now')").fetchone()
         return float(row[0])
     except Exception:
@@ -51,7 +54,7 @@ def allow_new(con: sqlite3.Connection, cfg: dict, chain: str, for_alert: bool = 
     stop = float(pf.get("daily_stop_pct", -3.0))
     pnl = realized_today(con)
     if pnl <= stop:
-        return False, f"daily-stop: pnl hari ini {pnl:.1f}% <= {stop}%"
+        return False, f"daily-stop: pnl tertimbang hari ini {pnl:.1f} <= {stop}"
     if for_alert:
         return True, "ok"
     if open_count(con) >= int(pf.get("max_open_positions", 5)):

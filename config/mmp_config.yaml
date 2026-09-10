@@ -114,7 +114,7 @@ portfolio:
   # Guard level-portofolio: berlaku untuk paper-open; daily-stop juga blokir alert.
   max_open_positions: 5
   max_per_chain: 2
-  daily_stop_pct: -3.0     # jumlah pnl% closed hari ini <= ini -> setop buka baru
+  daily_stop_pct: -3.0     # sum(pnl% x risk%) closed hari ini <= ini -> setop buka baru
   # Kill switch: buat file data/STOP (atau scripts/killswitch.py --on)
 
 backtest:

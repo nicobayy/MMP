@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "ruff", "mypy"]
+dev = ["pytest==9.1.1", "pytest-cov", "ruff", "mypy"]
 
 [project.scripts]
 mmp-scan = "mmp.cli:scan"

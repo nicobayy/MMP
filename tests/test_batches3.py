@@ -19,6 +19,9 @@ def _mem():
     con.execute(
         "CREATE TABLE wallet_sightings(id INTEGER PRIMARY KEY AUTOINCREMENT, wallet TEXT, token TEXT, symbol TEXT DEFAULT '', ts DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(wallet, token))"
     )
+    con.execute(
+        "CREATE TABLE whale_buys(id INTEGER PRIMARY KEY AUTOINCREMENT, wallet TEXT, token TEXT, side TEXT DEFAULT 'BUY', amount REAL DEFAULT 0, signature TEXT DEFAULT '', ts DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(wallet, token, signature))"
+    )
     return con
 
 
@@ -27,6 +30,12 @@ def test_attribute_token_outcome_feeds_wallets():
     wal.add_sighting(con, "W1", "TOK")
     wal.add_sighting(con, "W2", "TOK")
     wal.add_sighting(con, "W3", "OTHER")
+    # Tanpa bukti trade (whale_buys) -> tak ada atribusi (fail-closed, anti-karang track-record)
+    assert wal.attribute_token_outcome(con, "TOK", True, 5.0) == 0
+    assert wal.stats(con, "W1")["wins"] == 0
+    wal.record_whale_flow(con, "W1", "TOK", "BUY", 10.0, "sig1", 1.0)
+    wal.record_whale_flow(con, "W2", "TOK", "BUY", 10.0, "sig2", 1.0)
+    wal.record_whale_flow(con, "W3", "OTHER", "BUY", 10.0, "sig3", 1.0)
     n = wal.attribute_token_outcome(con, "TOK", True, 5.0)
     assert n == 2
     assert wal.stats(con, "W1")["wins"] == 1

@@ -36,10 +36,12 @@ def check_hard_veto(pair: dict, cfg: dict, enrichment: dict | None = None) -> li
     if n_txns < r["min_txns_h24"]:
         reasons.append(f"TXNS_TOO_LOW: {n_txns} < {r['min_txns_h24']}")
 
-    # Umur pair
+    # Umur pair (fail-closed opsional: tanpa timestamp = tak bisa verifikasi umur)
     age = _pair_age_minutes(pair)
     if age is not None and age < r["min_pair_age_minutes"]:
         reasons.append(f"TOO_YOUNG: {age:.0f}min < {r['min_pair_age_minutes']}min")
+    elif age is None and r.get("veto_on_unknown_age", False):
+        reasons.append("AGE_UNKNOWN: pairCreatedAt tak tersedia (tak bisa verifikasi umur)")
 
     # FDV vs mcap
     try:

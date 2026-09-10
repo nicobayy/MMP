@@ -37,6 +37,7 @@ risk:
   min_pair_age_minutes: 60    # tolak token < 1 jam (anti-rug cepat) — kecuali permissive
   blocked_labels: ["honeypot", "mintable-risk", "freezable-risk", "proxy-risk"]
   veto_on_blind: false       # true = buta data keamanan -> VETO (default: penalti+cap saja)
+  veto_on_unknown_age: false # true = pair tanpa pairCreatedAt -> VETO AGE_UNKNOWN (default: lolos, umur tak terverifikasi)
 
 liquidity:
   min_liquidity_usd: 30000

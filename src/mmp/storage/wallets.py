@@ -67,13 +67,19 @@ def record_outcome(con: sqlite3.Connection, wallet: str, win: bool, pnl: float =
     con.commit()
 
 def attribute_token_outcome(con: sqlite3.Connection, token: str, win: bool, pnl: float = 0.0) -> int:
-    """Tautkan hasil posisi ke SEMUA wallet yang tersight di token itu.
-    Dipanggil otomatis tiap paper close — win-rate wallet terbentuk sendiri,
-    simetris dengan KOL handle_stats. win = pnl bersih > 0 (konsisten dgn backtest).
+    """Tautkan hasil posisi ke wallet yang TERBUKTI trading token itu.
+
+    Hanya wallet dengan arus BUY tercatat di whale_buys untuk token ini yang
+    diberi outcome — top holder pasif yang kebetulan tersight TIDAK ikut,
+    agar track-record tak mengarang. Tanpa bukti trade -> return 0.
+    win = pnl bersih > 0 (konsisten dgn backtest & KOL handle_stats).
     Return jumlah wallet yang dicatat.
     """
     try:
-        rows = con.execute("SELECT DISTINCT wallet FROM wallet_sightings WHERE token=?", (token,)).fetchall()
+        rows = con.execute(
+            "SELECT DISTINCT s.wallet FROM wallet_sightings s"
+            " JOIN whale_buys w ON w.wallet=s.wallet AND w.token=s.token"
+            " WHERE s.token=? AND w.side='BUY'", (token,)).fetchall()
     except Exception as e:
         log.debug("wallets attribute lookup skip: %s", str(e)[:120])
         return 0

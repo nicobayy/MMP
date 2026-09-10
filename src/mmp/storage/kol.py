@@ -87,7 +87,8 @@ def recent_handles_count(con: sqlite3.Connection, token: str, hours: int = 6) ->
 
 def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
     """Win-rate handle dari outcome paper token yang pernah di-callout.
-    TP=win, SL=loss, TIMEOUT ikut apa adanya. Tanpa data -> netral, bukan vonis.
+    win = pnl bersih > 0 (konsisten dgn backtest & wallet tracker).
+    Tanpa data -> netral, bukan vonis.
     """
     try:
         rows = con.execute(
@@ -101,12 +102,12 @@ def handle_stats(con: sqlite3.Connection, handle: str) -> dict:
     q = ",".join("?" for _ in tokens)
     try:
         outs = con.execute(
-            f"SELECT close_reason FROM paper_positions WHERE status='CLOSED' AND token IN ({q})", tokens).fetchall()
+            f"SELECT pnl_pct FROM paper_positions WHERE status='CLOSED' AND token IN ({q})", tokens).fetchall()
     except Exception as e:
         log.debug("kol handle outcomes skip: %s", str(e)[:120])
         outs = []
-    wins = sum(1 for o in outs if o[0] == "TP")
-    losses = sum(1 for o in outs if o[0] in ("SL", "TIMEOUT"))
+    wins = sum(1 for o in outs if float(o[0] or 0) > 0)
+    losses = sum(1 for o in outs if float(o[0] or 0) <= 0)
     n = wins + losses
     wr = round(wins / n, 3) if n else 0.0
     return {"calls": len(tokens), "wins": wins, "losses": losses, "win_rate": wr,

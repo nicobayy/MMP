@@ -3,7 +3,13 @@ Usage:
   python scripts/paper.py --list
   python scripts/paper.py --settle            # tutup yg kena TP/SL/timeout
   python scripts/paper.py --settle --timeout-h 24
+  python scripts/paper.py --settle --mark-to-market  # hanya tampilkan nilai kini, tak menutup posisi
   python scripts/paper.py --report            # expectancy dari posisi closed
+
+Settle memakai replay candle (high/low) bila tersedia agar TP/SL yang
+tersentuh intra-periode tak terlewat; fallback ke harga titik (mark-to-market)
+bila candle kosong. Hasil replay = estimasi optimistis-menengah (candle hourly
+menyembunyikan whipsaw intra-jam).
 """
 from __future__ import annotations
 
@@ -15,8 +21,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from mmp.backtest.engine import apply_costs, settle, summarize
+from mmp.backtest.replay import replay as replay_candles
+from mmp.collectors import ohlcv as ohlcv_mod
 from mmp.collectors import prices as pxr
 from mmp.config import db_path, load_config
+from mmp.storage import candles as cstore
 from mmp.storage import paper as pstore
 from mmp.storage import wallets as wal
 from mmp.storage.store import connect
@@ -25,6 +34,81 @@ from mmp.storage.store import connect
 def live_price(chain: str, pair_addr: str, token: str = "") -> float:
     px, _src = pxr.resolve_price(chain, token, pair_addr)
     return px
+
+
+def _epoch(ts: str) -> int:
+    try:
+        dt = datetime.fromisoformat(str(ts))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)  # CURRENT_TIMESTAMP = UTC
+        return int(dt.timestamp())
+    except Exception:
+        return 0
+
+def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: float,
+                    con=None) -> dict:
+    """Tentukan outcome satu posisi paper. Return dict hasil settle.
+
+    Prioritas: replay candle (high/low dari entry) -> fallback harga titik.
+    Return: {status, pnl_pct(net), exit_price, via} dengan via =
+    'replay' | 'spot' | 'mark-to-market'. NO_DATA replay = fallback spot,
+    bukan vonis.
+    """
+    sl_pct = float(cfg["position"]["default_stop_loss_pct"])
+    tp_pct = float(cfg["position"]["default_take_profit_pct"])
+    if o.get("entry") and o.get("sl"):
+        try:
+            sl_pct = abs((float(o["entry"]) - float(o["sl"])) / float(o["entry"]) * 100)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+    if o.get("entry") and o.get("tp"):
+        try:
+            tp_pct = abs((float(o["tp"]) - float(o["entry"])) / float(o["entry"]) * 100)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+    # 1. Replay candle (butuh pool + candle setelah entry)
+    pool = ohlcv_mod.resolve_pool(o.get("chain", ""), o.get("token", "") or "")
+    candles: list = []
+    if pool and con is not None:
+        try:
+            cstore.init(con)
+            candles = cstore.get_candles(con, o.get("chain", ""), pool, "hour",
+                                         since=_epoch(o.get("opened_ts", "")) - 3600)
+        except Exception:
+            candles = []
+        if not candles:
+            try:
+                candles = ohlcv_mod.fetch(o.get("chain", ""), pool, "hour",
+                                          int((cfg.get("backtest") or {}).get("replay_limit", 500)))
+                cstore.upsert_candles(con, o.get("chain", ""), pool, "hour", candles)
+            except Exception:
+                candles = []
+    if candles:
+        r = replay_candles(_epoch(o.get("opened_ts", "")), float(o.get("entry") or 0),
+                           sl_pct, tp_pct, candles, timeout_h=timeout_h)
+        if r.get("status") in ("TP", "SL", "TIMEOUT"):
+            net = apply_costs(float(r.get("pnl_pct", 0.0)), slip, fee)
+            exit_px = float(o.get("tp") or 0) if r["status"] == "TP" \
+                else (float(o.get("sl") or 0) if r["status"] == "SL" else float(candles[-1].get("c", o.get("entry") or 0)))
+            return {"status": r["status"], "pnl_pct": net, "exit_price": exit_px,
+                    "via": "replay", "gross": float(r.get("pnl_pct", 0.0))}
+        px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
+        if px:
+            cur = (px - float(o.get("entry") or px)) / float(o.get("entry") or px) * 100
+            return {"status": "OPEN", "pnl_pct": round(cur, 2), "exit_price": px, "via": "mark-to-market"}
+        return {"status": "NO_DATA", "pnl_pct": 0.0, "exit_price": 0.0, "via": "replay"}
+    # 2. Fallback harga titik (mark-to-market)
+    px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
+    if not px:
+        return {"status": "NO_DATA", "pnl_pct": 0.0, "exit_price": 0.0, "via": "spot"}
+    timed_out = age_hours(o.get("opened_ts", "")) >= timeout_h
+    r = settle(o["entry"], px, sl_pct, tp_pct, timeout_hit=timed_out)
+    if r["status"] in ("TP", "SL", "TIMEOUT"):
+        net = apply_costs(r["pnl_pct"], slip, fee)
+        return {"status": r["status"], "pnl_pct": net, "exit_price": px,
+                "via": "spot", "gross": r["pnl_pct"]}
+    return {"status": "OPEN", "pnl_pct": r["pnl_pct"], "exit_price": px, "via": "mark-to-market"}
+
 
 def age_hours(opened_ts: str) -> float:
     try:
@@ -41,14 +125,14 @@ def main():
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--settle", action="store_true")
     ap.add_argument("--timeout-h", type=float, default=None)
+    ap.add_argument("--mark-to-market", action="store_true",
+                    help="hanya tampilkan nilai kini, jangan tutup posisi")
     ap.add_argument("--report", action="store_true")
     args = ap.parse_args()
     cfg = load_config()
     con = connect(db_path())
     pstore.init(con)
     wal.init(con)
-    sl_pct = float(cfg["position"]["default_stop_loss_pct"])
-    tp_pct = float(cfg["position"]["default_take_profit_pct"])
     slip = float((cfg.get("paper") or {}).get("slippage_pct", 0.5))
     fee = float((cfg.get("paper") or {}).get("fee_pct", 0.2))
     timeout_h = float(args.timeout_h) if args.timeout_h is not None \
@@ -63,21 +147,19 @@ def main():
     if args.settle:
         n = 0
         for o in pstore.list_open(con):
-            px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
-            if not px:
-                print(f"- skip {o['symbol']}: harga tak tersedia")
-                continue
-            timed_out = age_hours(o.get("opened_ts", "")) >= timeout_h
-            r = settle(o["entry"], px, sl_pct, tp_pct, timeout_hit=timed_out)
-            if r["status"] in ("TP", "SL", "TIMEOUT"):
-                net = apply_costs(r["pnl_pct"], slip, fee)
-                pstore.close_position(con, o["id"], px, net, r["status"])
-                fed = wal.attribute_token_outcome(con, o.get("token", ""), net > 0, net) if o.get("token") else 0
-                print(f"- closed #{o['id']} {o['symbol']} {r['status']} {net}% (gross {r['pnl_pct']}%, wallets fed: {fed})")
+            r = settle_position(o, cfg, timeout_h, slip, fee, con)
+            if r["status"] in ("TP", "SL", "TIMEOUT") and not args.mark_to_market:
+                pstore.close_position(con, o["id"], r["exit_price"], r["pnl_pct"], r["status"])
+                fed = wal.attribute_token_outcome(con, o.get("token", ""), r["pnl_pct"] > 0, r["pnl_pct"]) if o.get("token") else 0
+                print(f"- closed #{o['id']} {o['symbol']} {r['status']} {r['pnl_pct']}% (via {r['via']}, wallets fed: {fed})")
                 n += 1
+            elif r["status"] == "NO_DATA":
+                print(f"- skip {o['symbol']}: harga/candle tak tersedia")
             else:
-                print(f"- open #{o['id']} {o['symbol']} {r['pnl_pct']}%")
-        print(f"Settled {n} posisi (timeout {timeout_h}h).")
+                tag = "mtm" if args.mark_to_market else "open"
+                print(f"- {tag} #{o['id']} {o['symbol']} {r['pnl_pct']}% (via {r['via']})")
+        mode = "MTM saja (tak ada yang ditutup)" if args.mark_to_market else f"timeout {timeout_h}h"
+        print(f"Settled {n} posisi ({mode}).")
     if args.report:
         rows = con.execute("SELECT pnl_pct, close_reason, COALESCE(tier,1) FROM paper_positions WHERE status='CLOSED'").fetchall()
         outcomes = [{"status": r[1], "pnl_pct": r[0]} for r in rows]

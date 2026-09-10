@@ -37,8 +37,10 @@ class Signal:
 
 def _dual_check(pair: dict, enrichment: dict, cfg: dict) -> tuple[bool, str]:
     """Dual-source = dua sumber independen hadir DAN nilainya konsisten.
-    Solana: Helius (mint/dist) + Birdeye (holders/mcap/liq).
-    EVM: DexScreener + honeypot.is (tax diketahui, bukan honeypot).
+    Solana: Helius (mint/dist) + Birdeye (holders/mcap/liq) — verifikasi angka.
+    EVM: DexScreener + honeypot.is (tax diketahui, bukan honeypot) — verifikasi
+    pajak, BUKAN verifikasi angka mcap/liq (honeypot.is tak punya data itu).
+    Label jujur: "tax-verified", bukan "setuju".
     Konflik angka antar-sumber = data tak bisa dipercaya -> bukan dual.
     """
     tiers = cfg.get("tiers") or {}
@@ -70,7 +72,8 @@ def _dual_check(pair: dict, enrichment: dict, cfg: dict) -> tuple[bool, str]:
     if tiers.get("tier2_evm_tax_required", True) and \
             (en.get("buy_tax") is None or en.get("sell_tax") is None):
         return False, "tax EVM tak diketahui"
-    return True, "DexScreener+honeypot.is setuju"
+    # Jujur: ini verifikasi pajak, bukan cross-check angka likuiditas.
+    return True, "DexScreener+tax-verified (honeypot.is: bukan honeypot, tax diketahui)"
 
 def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
              sm_wallets: list | None = None, kol_callouts: list | None = None,

@@ -174,10 +174,15 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
         if not ok_alert:
             print(f"  telegram: skip (guard: {why})")
         elif should_alert(con, sig.pair_address, cd):
-            ok = send_telegram(format_signal(sig))
-            if ok:
-                mark_alerted(con, sig.pair_address)
-            print(f"  telegram: {'sent' if ok else 'skip (isi .env dulu)'}")
+            from mmp.notifiers.telegram import creds as _creds
+            tok, cht = _creds()
+            if not tok or not cht:
+                print("  telegram: skip (TELEGRAM_BOT_TOKEN/CHAT_ID kosong di .env)")
+            else:
+                ok = send_telegram(format_signal(sig))
+                if ok:
+                    mark_alerted(con, sig.pair_address)
+                print(f"  telegram: {'sent' if ok else 'GAGAL kirim (token/chat-id/koneksi, cek scripts/test_telegram.py)'}")
         else:
             print(f"  telegram: skip (cooldown {cd}m, sudah Pernah dikirim)")
     # Paper auto-open tiap PASS (dedup: 1 pair max 1 OPEN; TIER-2 size setengah).
@@ -343,8 +348,13 @@ def main():
         except Exception as e:
             log.debug("simpan batch_stats skip: %s", str(e)[:160])
         if args.notify and (cfg.get("telegram") or {}).get("send_summary", True):
-            ok = send_telegram(format_summary(n_pass, n_reject, passes))
-            print(f"Summary telegram: {'sent' if ok else 'skip (isi .env dulu)'}")
+            from mmp.notifiers.telegram import creds as _creds2
+            tok2, cht2 = _creds2()
+            if not tok2 or not cht2:
+                print("Summary telegram: skip (TELEGRAM_BOT_TOKEN/CHAT_ID kosong di .env)")
+            else:
+                ok = send_telegram(format_summary(n_pass, n_reject, passes))
+                print(f"Summary telegram: {'sent' if ok else 'GAGAL kirim (token/chat-id/koneksi, cek scripts/test_telegram.py)'}")
         return
 
     ap.print_help()

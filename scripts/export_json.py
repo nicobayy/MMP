@@ -175,10 +175,13 @@ def export_all(out_dir: Path, limit: int = 1000, paper_limit: int = 500) -> dict
         _write_atomic(out / name, obj)
     # Mirror ke web/dist/data bila frontend sudah di-build: dist adalah snapshot
     # public/ saat build, jadi produksi (preview/nginx) perlu salinan segar.
+    # mkdir sendiri: di clone segar, data/*.json di-ignore git sehingga
+    # dist/data tak ada saat build -> tanpa ini mirror selalu skip.
     dist_data = ROOT / "web" / "dist" / "data"
     mirrored = False
-    if dist_data.is_dir():
+    if (ROOT / "web" / "dist").is_dir():
         try:
+            dist_data.mkdir(parents=True, exist_ok=True)
             for name, obj in payloads.items():
                 _write_atomic(dist_data / name, obj)
             mirrored = True

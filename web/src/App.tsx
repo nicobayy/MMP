@@ -25,6 +25,24 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [theme, setTheme] = useState<string>(() => {
+    try {
+      const saved = window.localStorage.getItem("mmp-theme");
+      if (saved === "dark" || saved === "light") return saved;
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem("mmp-theme", theme);
+    } catch {
+      /* abaikan */
+    }
+  }, [theme]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -76,6 +94,14 @@ export default function App() {
               <div className="live-pill mono">
                 <span className="dot" /> Live · <span>{bundle?.exportedAt ? new Date(bundle.exportedAt).toLocaleTimeString("id-ID") : "—"}</span>
               </div>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+                aria-label="Ganti mode malam/siang"
+              >
+                {theme === "dark" ? "☀️ Siang" : "🌙 Malam"}
+              </button>
               <button type="button" className="btn active" onClick={refresh} aria-label="Refresh data">
                 <span className={refreshing ? "spin" : ""}>↻</span> Refresh
               </button>
@@ -90,6 +116,14 @@ export default function App() {
                 {t}
               </button>
             ))}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+              aria-label="Ganti mode malam/siang"
+            >
+              {theme === "dark" ? "☀️ Siang" : "🌙 Malam"}
+            </button>
             <span className="nav-sync mono">Data per {bundle?.exportedAt ?? "—"} · refresh 45 dtk</span>
           </nav>
         </div>

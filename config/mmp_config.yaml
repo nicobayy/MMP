@@ -92,6 +92,11 @@ tracker:
 
 telegram:
   cooldown_min: 120        # anti-spam: 1 pair max 1 alert per 2 jam
+
+dedup:
+  cooldown_min: 120        # anti-double-signal: 1 token (chain:address) max 1 baris DB per 2 jam
+  # scheduler tiap 60m + boosts itu-itu saja = tanpa ini CSV penuh Stocklana/POLLY tiap jam.
+  # Bypass darurat: run_scan --no-dedup / --dedup-min 0
   send_summary: true       # kirim ringkasan tiap run bila --notify
 
 geckoterminal:

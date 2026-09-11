@@ -25,9 +25,35 @@ from mmp.storage import kol as koldb
 from mmp.storage import paper as pstore
 from mmp.storage import stats as stats_mod
 from mmp.storage import wallets as wal
-from mmp.storage.store import connect, mark_alerted, save, should_alert
+from mmp.storage.store import connect, dedup_key, is_recent_duplicate, mark_alerted, save, should_alert
 
 log = logging.getLogger("mmp.run_scan")
+
+
+def pair_dedup_key(pair: dict) -> str:
+    """Kunci dedup untuk 1 pair: chain:token, fallback ke pairAddress."""
+    chain = pair.get("chainId", "?")
+    tok = ((pair.get("baseToken") or {}).get("address")) or ""
+    return dedup_key(chain, tok, pair.get("pairAddress", ""))
+
+
+def dedup_cooldown_min(cfg, args=None) -> int:
+    """Cooldown dedup token (menit). Prioritas: CLI --dedup-min > config dedup > telegram cooldown."""
+    try:
+        if args is not None and getattr(args, "dedup_min", None) is not None:
+            return int(args.dedup_min)
+    except (TypeError, ValueError):
+        pass
+    try:
+        d = cfg.get("dedup") or {}
+        if d.get("cooldown_min") is not None:
+            return int(d["cooldown_min"])
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int((cfg.get("telegram") or {}).get("cooldown_min", 120))
+    except (TypeError, ValueError):
+        return 120
 
 
 def enrichment_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
@@ -70,9 +96,25 @@ def helius_for_pair(pair: dict, cfg, use_helius: bool) -> dict:
         log.debug("helius enrichment skip: %s", str(e)[:160])
         return {}
 
-def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict, str]:
+def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict | None, str]:
     """Return (verdict, sig_dict, hp_status). hp_status untuk instrumentasi
-    cakupan: ok | no_tax | fail | na (lihat storage/stats.py)."""
+    cakupan: ok | no_tax | fail | na (lihat storage/stats.py).
+    Verdict khusus DUPLICATE_SKIP = token yang sama sudah diproses < cooldown,
+    tanpa save DB agar CSV tak penuh duplikat (kasus Stocklana/POLLY tiap jam)."""
+    # Dedup antar-run: cek DB SEBELUM bakar API (hemat kredit Helius/Birdeye).
+    if not getattr(args, "no_dedup", False):
+        try:
+            chain0 = pair.get("chainId", "?")
+            tok0 = ((pair.get("baseToken") or {}).get("address")) or ""
+            cd0 = dedup_cooldown_min(cfg, args)
+            dup, last_ts = is_recent_duplicate(con, chain0, tok0, pair.get("pairAddress", ""), cd0)
+            if dup:
+                sym0 = ((pair.get("baseToken") or {}).get("symbol")) or "?"
+                msg = f"dedup: skip {sym0} {pair_dedup_key(pair)} (terakhir {last_ts}, < {cd0}m)"
+                print(msg)
+                return "DUPLICATE_SKIP", None, "na"
+        except Exception as e:
+            log.debug("dedup check skip: %s", str(e)[:160])
     he = enrichment_for_pair(pair, cfg, args.use_helius)
     if (pair.get("chainId") or "") == "solana":
         hp_status = "na"
@@ -242,6 +284,8 @@ def main():
     ap.add_argument("--paper", action="store_true", help="Buka posisi paper virtual tiap PASS")
     ap.add_argument("--gecko-fallback", action="store_true", default=True, help="Tambah universe EVM GeckoTerminal")
     ap.add_argument("--no-gecko-fallback", dest="gecko_fallback", action="store_false")
+    ap.add_argument("--no-dedup", action="store_true", help="Matikan dedup token (audit penuh, CSV bisa ganda)")
+    ap.add_argument("--dedup-min", type=int, default=None, help="Override cooldown dedup token (menit)")
     ap.add_argument("--config", default=None)
     args = ap.parse_args()
 
@@ -259,7 +303,7 @@ def main():
     if args.chains:
         cfg["chains"]["enabled"] = [c.strip() for c in args.chains.split(",") if c.strip()]
     con = connect(db_path())
-    n_pass = n_reject = 0
+    n_pass = n_reject = n_skip = 0
 
     if args.pair and args.chain:
         from mmp import validators as _v
@@ -297,21 +341,40 @@ def main():
         if args.gecko_fallback:
             try:
                 extra = gecko.universe_fallback(cfg, per_chain=3)
-                seen = {p.get("pairAddress") for p in pairs}
-                pairs += [p for p in extra if p.get("pairAddress") not in seen]
+                # Dedup gabungan boosts+gecko by pair DAN token (simbol sama belum tentu token sama,
+                # token sama dengan pair beda tetap 1x scan — pilih yang paling likuid/first).
+                seen_pairs = {p.get("pairAddress") for p in pairs}
+                seen_toks = {pair_dedup_key(p) for p in pairs}
+                for p in extra:
+                    if p.get("pairAddress") in seen_pairs:
+                        continue
+                    k = pair_dedup_key(p)
+                    if k in seen_toks:
+                        continue
+                    seen_pairs.add(p.get("pairAddress"))
+                    seen_toks.add(k)
+                    pairs.append(p)
             except Exception:
                 pass
         if not pairs:
             print("Universe kosong (semua sumber gagal). Coba lagi nanti.")
             return
-        # Dedup pair (boosts bisa memuat token yang sama 2x -> jangan scan & catat ganda).
+        # Dedup dalam-run (boosts bisa memuat token yang sama 2x -> jangan scan & catat ganda).
+        # Kunci = chain:token, bukan cuma pairAddress (satu token bisa punya 2 pair).
         uniq: list[dict] = []
         seen_addr: set[str] = set()
+        seen_tok: set[str] = set()
         for p in pairs:
             a = p.get("pairAddress")
-            if a and a not in seen_addr:
+            k = pair_dedup_key(p)
+            if a and a in seen_addr:
+                continue
+            if k in seen_tok:
+                continue
+            if a:
                 seen_addr.add(a)
-                uniq.append(p)
+            seen_tok.add(k)
+            uniq.append(p)
         pairs = uniq
         print(f"Scanning {len(pairs)} pairs chains={cfg['chains']['enabled']} (solana prioritas, permissive={args.permissive})...")
         if args.use_helius and not hel.has_key():
@@ -332,13 +395,16 @@ def main():
                 print(f"- error: {err}")
                 n_reject += 1
                 continue
+            if v == "DUPLICATE_SKIP":
+                n_skip += 1
+                continue
             n_pass += v == "PASS"
             n_reject += v != "PASS"
             if v == "PASS" and d:
                 passes.append(d)
             if d:
                 cov_items.append({"grade": (d.get("meta") or {}).get("data_grade", "?"), "hp": hp_status})
-        print(f"\nRingkasan: PASS={n_pass} REJECT={n_reject} (konservatif = REJECT banyak itu NORMAL)")
+        print(f"\nRingkasan: PASS={n_pass} REJECT={n_reject} SKIP_DUP={n_skip} (konservatif = REJECT banyak itu NORMAL)")
         print(_meter.line())
         cov = stats_mod.summarize_batch(cov_items)
         print(f"coverage: grade COMPLETE={cov['complete']} PARTIAL={cov['partial']} BLIND={cov['blind']}"

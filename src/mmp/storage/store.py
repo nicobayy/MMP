@@ -77,6 +77,58 @@ def should_alert(con, pair_addr: str, cooldown_min: int = 120) -> bool:
         log.debug("should_alert parse skip: %s", str(e)[:120])
         return True
 
+def dedup_key(chain: str, token: str, pair_addr: str) -> str:
+    """Kunci dedup utama = chain:token (lower). Fallback ke pair bila token kosong/?.
+
+    Alasan: token yang sama bisa punya banyak pair (SOL/USDC, PumpSwap->Raydium
+    migrasi). Dedup by pairAddress saja = sinyal ganda untuk token yang sama
+    seperti Stocklana di CSV (pair sama di-scan tiap jam).
+    """
+    ch = (chain or "").strip().lower()
+    tok = (token or "").strip()
+    if tok and tok != "?":
+        return f"{ch}:{tok.lower()}"
+    return f"{ch}:pair:{(pair_addr or '').strip().lower()}"
+
+def last_token_signal_ts(con, chain: str, token: str, pair_addr: str) -> str | None:
+    """Ambil ts sinyal terakhir untuk token yang sama (atau pair fallback)."""
+    ch = (chain or "").strip()
+    tok = (token or "").strip()
+    try:
+        if tok and tok != "?":
+            row = con.execute(
+                "SELECT MAX(ts) FROM signals WHERE LOWER(chain)=LOWER(?) AND LOWER(token)=LOWER(?)",
+                (ch, tok)).fetchone()
+        else:
+            row = con.execute(
+                "SELECT MAX(ts) FROM signals WHERE pair_addr=?",
+                (pair_addr,)).fetchone()
+        return str(row[0]) if row and row[0] else None
+    except Exception as e:
+        log.debug("last_token_signal_ts skip: %s", str(e)[:120])
+        return None
+
+def is_recent_duplicate(con, chain: str, token: str, pair_addr: str,
+                        cooldown_min: int = 120) -> tuple[bool, str | None]:
+    """True bila token yang sama sudah disimpan dalam < cooldown_min menit.
+
+    Dipakai untuk skip scan ulang antar-run (scheduler tiap 60m + boosts yang
+    itu-itu saja = CSV penuh duplikat Stocklana/POLLY tiap jam).
+    """
+    last_ts = last_token_signal_ts(con, chain, token, pair_addr)
+    if not last_ts:
+        return False, None
+    try:
+        from datetime import datetime, timedelta, timezone
+        last = datetime.fromisoformat(str(last_ts))
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        dup = datetime.now(timezone.utc) - last < timedelta(minutes=cooldown_min)
+        return dup, last_ts
+    except Exception as e:
+        log.debug("is_recent_duplicate parse skip: %s", str(e)[:120])
+        return False, last_ts
+
 def mark_alerted(con, pair_addr: str):
     con.execute("INSERT OR REPLACE INTO sent_alerts(pair_addr, last_sent) VALUES(?, CURRENT_TIMESTAMP)", (pair_addr,))
     con.commit()

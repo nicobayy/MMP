@@ -45,11 +45,17 @@ def universe_from_boosts(boosts: list[dict], cfg: dict, limit_per_chain: int | N
     boosts_sorted = sorted(boosts, key=lambda b: chain_priority(b.get("chainId", "solana"), cfg))
     wanted: list[tuple[str, str]] = []
     pre: dict[str, int] = {c: 0 for c in enabled}
+    seen_want: set[str] = set()
     for b in boosts_sorted:
         addr = b.get("tokenAddress")
         chain = b.get("chainId", "solana")
         # Batasi SEBELUM resolve agar tak bakar API untuk kandidat yang pasti dibuang.
+        # Dedup by chain:token — boosts sering memuat token yang sama 2x.
         if addr and chain in enabled and pre.get(chain, 0) < per_chain:
+            k = f"{str(chain).lower()}:{str(addr).lower()}"
+            if k in seen_want:
+                continue
+            seen_want.add(k)
             wanted.append((chain, addr))
             pre[chain] = pre.get(chain, 0) + 1
     workers = int((cfg.get("concurrency") or {}).get("universe_workers", 4))

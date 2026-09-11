@@ -1,0 +1,138 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CoverageView } from "./components/Coverage";
+import { OpsView } from "./components/Ops";
+import { PaperView } from "./components/Paper";
+import { SignalFeed } from "./components/SignalFeed";
+import { loadBundle, vetoTop, type Bundle } from "./lib/data";
+
+type Tab = "Sinyal" | "Paper Positions" | "Cakupan" | "Operasional";
+const TABS: Tab[] = ["Sinyal", "Paper Positions", "Cakupan", "Operasional"];
+const POLL_MS = 45_000;
+
+function Metric({ label, value, note, tone, solid }: { label: string; value: string; note: string; tone?: string; solid?: string }) {
+  return (
+    <article className={solid ? `metric ${solid}` : "metric"}>
+      <p className="metric-label mono">{label}</p>
+      <p className="metric-value mono">{value}</p>
+      <p className={tone ? `metric-note mono ${tone}` : "metric-note mono"}>{note}</p>
+    </article>
+  );
+}
+
+export default function App() {
+  const [bundle, setBundle] = useState<Bundle | null>(null);
+  const [tab, setTab] = useState<Tab>("Sinyal");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const b = await loadBundle();
+      setBundle(b);
+      setFailed(!b.meta && b.signals.length === 0 && b.positions.length === 0);
+    } finally {
+      window.setTimeout(() => setRefreshing(false), 400);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const t = window.setInterval(refresh, POLL_MS);
+    return () => window.clearInterval(t);
+  }, [refresh]);
+
+  const m = useMemo(() => {
+    if (!bundle) return null;
+    const n = bundle.signals.length;
+    const avg = n ? bundle.signals.reduce((a, s) => a + Number(s.confidence ?? 0), 0) / n : 0;
+    const blind = n ? bundle.signals.filter((s) => s.grade === "BLIND").length : 0;
+    const closed = bundle.positions.filter((p) => p.status === "CLOSED");
+    const wins = closed.filter((p) => Number(p.pnl_pct ?? 0) > 0).length;
+    const vt = vetoTop(bundle.signals, 1)[0];
+    return {
+      n,
+      avg: `${avg.toFixed(0)}%`,
+      blindPct: n ? `${((blind / n) * 100).toFixed(1)}%` : "—",
+      closedNote: closed.length ? `${wins}/${closed.length} win` : "belum ada CLOSED",
+      vetoNote: vt ? `${vt.name} ×${vt.n}` : "belum ada veto",
+    };
+  }, [bundle]);
+
+  return (
+    <div className="page">
+      <header className="topbar">
+        <div className="wrap">
+          <div className="topbar-row">
+            <div className="brand">
+              <div className="brand-mark">M</div>
+              <div>
+                <h1>Melok Melok Profit</h1>
+                <p className="mono">Signal Intelligence · MMP Terminal</p>
+              </div>
+            </div>
+            <div className="live">
+              <div className="live-pill mono">
+                <span className="dot" /> Live · <span>{bundle?.exportedAt ? new Date(bundle.exportedAt).toLocaleTimeString("id-ID") : "—"}</span>
+              </div>
+              <button type="button" className="btn active" onClick={refresh} aria-label="Refresh data">
+                <span className={refreshing ? "spin" : ""}>↻</span> Refresh
+              </button>
+            </div>
+            <button type="button" className="btn menu-btn" aria-label="Buka menu" onClick={() => setMenuOpen((v) => !v)}>
+              {menuOpen ? "✕" : "☰"}
+            </button>
+          </div>
+          <nav aria-label="Navigasi utama" className={menuOpen ? "nav mobile-open" : "nav"}>
+            {TABS.map((t) => (
+              <button key={t} type="button" className={tab === t ? "btn active" : "btn"} onClick={() => { setTab(t); setMenuOpen(false); }}>
+                {t}
+              </button>
+            ))}
+            <span className="nav-sync mono">Data per {bundle?.exportedAt ?? "—"} · refresh 45 dtk</span>
+          </nav>
+        </div>
+      </header>
+
+      <main className="main">
+        <div className="wrap">
+          {bundle?.ops?.killed ? (
+            <div className="banner stop"><strong>STOP — Kill switch aktif.</strong> Scan &amp; alert dihentikan. Matikan via <span className="mono">python scripts/killswitch.py --off</span>.</div>
+          ) : (
+            <div className="banner ok">Status: <strong>RUNNING</strong> — kill switch tidak aktif.</div>
+          )}
+
+          {failed ? (
+            <div className="empty" style={{ marginTop: 24 }}>
+              <strong>Data web belum ada.</strong> Jalankan ekspor dulu:
+              <code>python scripts/export_json.py</code>
+            </div>
+          ) : (
+            <>
+              <section aria-label="Ringkasan" className="metrics">
+                <Metric label="Sinyal" value={String(m?.n ?? "—")} note={`${bundle?.meta?.n_pass ?? 0} PASS`} tone="text-mint" />
+                <Metric label="Rata-rata confidence" value={m?.avg ?? "—"} note={m?.vetoNote ?? ""} solid="solid-rose" />
+                <Metric label="Paper closed" value={String(bundle?.ops?.n_closed ?? 0)} note={m?.closedNote ?? ""} solid="solid-cyan" />
+                <Metric label="BLIND share" value={m?.blindPct ?? "—"} note="tanpa sumber keamanan" tone="text-rose" />
+              </section>
+
+              {tab === "Sinyal" && (
+                <>
+                  <div style={{ marginTop: 32 }}><SignalFeed signals={bundle?.signals ?? []} /></div>
+                  <div className="grid-12">
+                    <div className="col-8"><PaperView positions={bundle?.positions ?? []} /></div>
+                    <div className="col-4"><CoverageView batches={bundle?.batches ?? []} /></div>
+                  </div>
+                </>
+              )}
+              {tab === "Paper Positions" && <PaperView positions={bundle?.positions ?? []} expanded />}
+              {tab === "Cakupan" && <CoverageView batches={bundle?.batches ?? []} expanded />}
+              {tab === "Operasional" && <OpsView ops={bundle?.ops ?? null} meta={bundle?.meta ?? null} />}
+            </>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

@@ -74,6 +74,9 @@ def main():
     ap.add_argument("--paper", action="store_true", default=True)
     ap.add_argument("--no-paper", dest="paper", action="store_false")
     ap.add_argument("--rounds", type=int, default=0, help="0 = selamanya")
+    ap.add_argument("--export-web", action="store_true", default=True,
+                    help="Export JSON dashboard web/ tiap akhir round (default on)")
+    ap.add_argument("--no-export-web", dest="export_web", action="store_false")
     args = ap.parse_args()
     n = 0
     print(f"Scheduler tiap {args.interval_min}m | chains={args.chains} | notify={args.notify} | paper={args.paper}")
@@ -90,13 +93,18 @@ def main():
                 try:
                     n += 1
                     print(f"\n===== ROUND {n} =====")
-                    cmd = [sys.executable, "scripts/run_scan.py", "--top-boosts", "--limit", str(args.limit), "--chains", args.chains]
+                    cmd = [sys.executable, "-u", "scripts/run_scan.py", "--top-boosts", "--limit", str(args.limit), "--chains", args.chains]
                     if args.notify:
                         cmd.append("--notify")
                     if args.paper:
                         cmd.append("--paper")
                     subprocess.run(cmd, cwd=ROOT)
-                    subprocess.run([sys.executable, "scripts/paper.py", "--settle"], cwd=ROOT)
+                    subprocess.run([sys.executable, "-u", "scripts/paper.py", "--settle"], cwd=ROOT)
+                    if args.export_web:
+                        try:
+                            subprocess.run([sys.executable, "-u", "scripts/export_json.py"], cwd=ROOT)
+                        except Exception as e:
+                            print(f"export web skip ({e})")
                     if args.rounds and n >= args.rounds:
                         break
                 finally:

@@ -1,0 +1,20 @@
+[Unit]
+Description=MMP live 24/7 (scheduler + dashboard web)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# GANTI: user + path sesuai VPS kamu
+User=mmp
+WorkingDirectory=/opt/MMP
+EnvironmentFile=/opt/MMP/.env
+ExecStart=/opt/MMP/venv/bin/python scripts/live.py --chains solana,base --port 8080
+Restart=always
+RestartSec=30
+# Batasi log journal agar disk tak penuh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

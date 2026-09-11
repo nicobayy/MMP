@@ -5,7 +5,6 @@ RUN pip install --no-cache-dir -r requirements-lock.txt
 COPY config/ config/
 COPY src/ src/
 COPY scripts/ scripts/
-COPY dashboard/ dashboard/
 COPY .env.example .env.example
 RUN useradd -m -u 10001 mmp && chown -R mmp:mmp /app
 USER mmp

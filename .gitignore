@@ -13,5 +13,8 @@ data/cache.json
 *.egg-info/
 dist/
 build/
+web/node_modules/
+web/dist/
+web/public/data/*.json
 .mypy_cache/
 .ruff_cache/

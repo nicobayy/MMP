@@ -56,7 +56,8 @@ scripts/add_callout.py       <- catat KOL callout
 scripts/build_wallets.py     <- kumpulkan kandidat wallet
 scripts/record_outcome.py    <- catat win/loss wallet
 scripts/test_telegram.py     <- tes bot
-dashboard/app.py             <- dashboard Streamlit
+scripts/export_json.py       <- ekspor SQLite -> web/public/data/*.json (kontrak dashboard)
+web/                         <- dashboard baru (Vite + React + TS, tanpa Python saat viewing)
 tests/
 ```
 
@@ -76,6 +77,8 @@ python scripts/run_scan.py --top-boosts --limit 5 --chains solana,base --notify 
 python scripts/run_scan.py --top-boosts --limit 10 --permissive
 # Loop berkala (scheduler):
 python scripts/scheduler.py --interval-min 60 --limit 5 --chains solana,base --notify --paper
+# LIVE 24/7 satu perintah (scheduler + dashboard web + export otomatis):
+python scripts/live.py --chains solana,base --port 8080
 # Kill switch (hentikan semua):
 python scripts/killswitch.py --on   # --off untuk nyalakan lagi
 # KOL callout:
@@ -88,8 +91,10 @@ python scripts/backtest.py --limit 50
 python scripts/replay.py --limit 10
 python scripts/calibrate.py
 python scripts/ohlcv_check.py --chain base --pool 0xABC...
-# Dashboard:
-streamlit run dashboard/app.py
+# Dashboard web (tanpa Python saat viewing):
+python scripts/export_json.py   # SQLite -> web/public/data/*.json (otomatis tiap round scheduler)
+cd web && npm install && npm run dev   # develop (http://localhost:5173)
+cd web && npm run build                # produksi -> web/dist (serve statis; JSON di-mirror ke dist/data tiap ekspor)
 # Jalankan test:
 pytest -q
 ```
@@ -101,6 +106,22 @@ docker run --rm -v $(pwd)/data:/app/data --env-file .env mmp \
   python scripts/run_scan.py --top-boosts --limit 5 --chains solana,base --notify --paper
 ```
 DB & histori di-mount via volume agar tak hilang tiap rebuild.
+
+## VPS 24/7 (satu perintah + systemd)
+```bash
+# Di VPS (Ubuntu): clone, venv, install
+python3.12 -m venv venv && venv/bin/pip install -r requirements.txt
+cp .env.example .env   # isi key Telegram/Helius/Birdeye
+cd web && npm install && npm run build && cd ..
+# Jalan 24/7: scheduler + dashboard :8080 + export otomatis
+venv/bin/python scripts/live.py --chains solana,base --port 8080
+# Autostart via systemd: sesuaikan User/WorkingDirectory di deploy/mmp.service, lalu:
+sudo cp deploy/mmp.service /etc/systemd/system/mmp.service
+sudo systemctl enable --now mmp
+journalctl -u mmp -f   # lihat log
+```
+Dashboard bind `0.0.0.0` — batasi via firewall (`ufw allow 8080`) atau reverse-proxy
+(nginx/caddy) bila dibuka ke publik. JSON `/data/*.json` selalu no-cache.
 
 ## Catatan jujur (bukan klaim)
 - LP-lock on-chain tidak ada API publik gratis yang reliabel → MMP memakai proxy

@@ -12,7 +12,6 @@ dependencies = [
   "pyyaml==6.0.3",
   "pydantic==2.13.5",
   "python-dotenv==1.2.3",
-  "streamlit==1.63.0",
   "pandas==3.0.5",
 ]
 

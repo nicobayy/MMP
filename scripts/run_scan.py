@@ -186,6 +186,18 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict | None, str]:
     except (TypeError, ValueError):
         _cap = None
     sig.plan = build_plan(sig.price_usd, cfg, capital_usd=_cap)
+    # Double-check sebelum save: tutup race antar-proses (2x run_scan bersamaan).
+    # Cek awal di atas sudah lewat detik/menit lalu (enrichment lambat + 429 retry),
+    # proses lain bisa sudah INSERT duluan. Cek ulang di sini, window tinggal ms.
+    if not getattr(args, "no_dedup", False):
+        try:
+            cd2 = dedup_cooldown_min(cfg, args)
+            dup2, last2 = is_recent_duplicate(con, sig.chain, sig.token_address, sig.pair_address, cd2)
+            if dup2:
+                print(f"dedup: skip {sig.symbol} {pair_dedup_key(pair)} (race, terakhir {last2}, < {cd2}m)")
+                return "DUPLICATE_SKIP", None, hp_status
+        except Exception as e:
+            log.debug("dedup recheck skip: %s", str(e)[:160])
     row = save(con, sig)
     sig_dict = sig.to_dict()
     sig_dict["db_id"] = row
@@ -361,19 +373,30 @@ def main():
             return
         # Dedup dalam-run (boosts bisa memuat token yang sama 2x -> jangan scan & catat ganda).
         # Kunci = chain:token, bukan cuma pairAddress (satu token bisa punya 2 pair).
+        # Kasus Gecko no-tax: baseToken.address kosong -> fallback pairAddress selalu beda,
+        # sehingga WETH Dex + WETH Gecko lolos dedup. Tangani via symbol per-chain
+        # (Dex duluan, Gecko belakangan -> Gecko ganda dibuang).
         uniq: list[dict] = []
         seen_addr: set[str] = set()
         seen_tok: set[str] = set()
+        seen_sym: set[str] = set()
         for p in pairs:
             a = p.get("pairAddress")
             k = pair_dedup_key(p)
+            tok = (((p.get("baseToken") or {}).get("address")) or "").strip()
+            sym = (((p.get("baseToken") or {}).get("symbol")) or "").strip().lower()
+            ch = (p.get("chainId") or "").strip().lower()
             if a and a in seen_addr:
                 continue
             if k in seen_tok:
                 continue
+            if (not tok or tok == "?") and sym and f"{ch}:{sym}" in seen_sym:
+                continue
             if a:
                 seen_addr.add(a)
             seen_tok.add(k)
+            if sym:
+                seen_sym.add(f"{ch}:{sym}")
             uniq.append(p)
         pairs = uniq
         print(f"Scanning {len(pairs)} pairs chains={cfg['chains']['enabled']} (solana prioritas, permissive={args.permissive})...")

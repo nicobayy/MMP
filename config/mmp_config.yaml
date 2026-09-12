@@ -158,6 +158,6 @@ concurrency:
   per_source:
     dexscreener: 4
     helius: 3
-    birdeye: 2
+    birdeye: 1             # 1 = aman free-tier (429 bila 2); naikkan bila plan berbayar
     honeypot_is: 2
     geckoterminal: 3

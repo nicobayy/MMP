@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { fmtPx, fmtUsd, tierBadge, type Signal } from "../lib/data";
+import { fmtPx, fmtUsd, fmtWhen, tierBadge, type Signal } from "../lib/data";
 
 function confWidth(v: number): string {
   if (v >= 90) return "94%";
@@ -121,7 +121,9 @@ export function SignalFeed({ signals, mode: modeProp, hideModeFilter }: { signal
               <span>Signal</span><span>Tier</span><span>Confidence</span><span>Entry</span><span>Grade</span>
               <span style={{ textAlign: "right" }}>ID</span>
             </div>
-            {filtered.map((s) => (
+            {filtered.map((s) => {
+              const w = fmtWhen(s.ts);
+              return (
               <button
                 type="button"
                 key={`${s.mode || "filter"}-${s.id}`}
@@ -130,7 +132,9 @@ export function SignalFeed({ signals, mode: modeProp, hideModeFilter }: { signal
               >
                 <span>
                   <strong className="feed-pair mono">{s.symbol || "?"} <span style={{ opacity: 0.5 }}>/ {s.dex ?? "?"}</span></strong>
-                  <small className="feed-chain mono">{s.chain} · {((s.mode || "filter") === "sniper" ? "SNIPER" : "FILTER")}</small>
+                  <small className="feed-chain mono" title={w.full}>
+                    {s.chain} · {((s.mode || "filter") === "sniper" ? "SNIPER" : "FILTER")} · {w.abs} ({w.rel})
+                  </small>
                 </span>
                 <span className={s.verdict === "PASS" ? "tier-badge" : "tier-badge reject"}>{tierBadge(s.verdict, s.tier)}</span>
                 <span className="conf-bar">
@@ -141,7 +145,8 @@ export function SignalFeed({ signals, mode: modeProp, hideModeFilter }: { signal
                 <span className="mono" style={{ fontWeight: 700 }}>{s.grade}</span>
                 <span className="mono" style={{ textAlign: "right", fontSize: 12, opacity: 0.6 }}>#{s.id}</span>
               </button>
-            ))}
+              );
+            })}
             {filtered.length === 0 && <p className="empty-row mono">Tidak ada sinyal yang cocok.</p>}
           </div>
         </div>
@@ -158,7 +163,7 @@ export function Inspector({ s }: { s: Signal }) {
   return (
     <aside className="inspector">
       <div className="inspector-top">
-        <p className="kicker mono">Inspeksi Sinyal · #{s.id}</p>
+        <p className="kicker mono">Inspeksi Sinyal · #{s.id} · {fmtWhen(s.ts).abs} ({fmtWhen(s.ts).rel})</p>
         <div className="inspector-title">
           <h3>{s.symbol || "?"}</h3>
           <span className="verdict-badge mono">{s.verdict}{s.verdict === "PASS" ? ` · T${s.tier}` : ""} · {(s.mode || "filter") === "sniper" ? "SNIPER" : "FILTER"}</span>

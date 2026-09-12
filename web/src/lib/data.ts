@@ -165,6 +165,23 @@ export function tierBadge(verdict: string, tier: number): string {
   return "REJECT";
 }
 
+function parseDbTs(ts: string | null | undefined): Date | null {
+  if (!ts) return null;
+  // DB: "YYYY-MM-DD HH:MM:SS" UTC. -> ISO agar Safari ikut bisa parse.
+  const iso = String(ts).trim().replace(" ", "T") + "Z";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+export function fmtWhen(ts: string | null | undefined): { abs: string; rel: string; full: string } {
+  const d = parseDbTs(ts);
+  if (!d) return { abs: "—", rel: "", full: String(ts ?? "") };
+  const abs = `${d.toLocaleDateString("id-ID", { day: "numeric", month: "short" })} ${d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`;
+  const mins = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+  const rel = mins < 1 ? "baru saja" : mins < 60 ? `${mins}m lalu` : mins < 1440 ? `${Math.floor(mins / 60)}j lalu` : `${Math.floor(mins / 1440)}h lalu`;
+  return { abs, rel, full: d.toLocaleString("id-ID") };
+}
+
 /* ---------- analitik (cermin logika Python, baca saja) ---------- */
 
 export type EquityPoint = { id: number; symbol: string; eq: number; dd: number; pnl: number };

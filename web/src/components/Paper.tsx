@@ -1,5 +1,5 @@
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { equityCurve, fmtPx, fmtSigned, tierStats, type Position } from "../lib/data";
+import { equityCurve, fmtPx, fmtSigned, fmtWhen, tierStats, type Position } from "../lib/data";
 
 export function PaperView({ positions, expanded }: { positions: Position[]; expanded?: boolean }) {
   const opens = positions.filter((p) => p.status === "OPEN");
@@ -36,6 +36,7 @@ export function PaperView({ positions, expanded }: { positions: Position[]; expa
             </div>
             <p className="pnl mono">OPEN</p>
             <p className="mono" style={{ fontSize: 11, opacity: 0.6 }}>entry {fmtPx(p.entry)} · #{p.id}</p>
+            <p className="mono" style={{ fontSize: 11, opacity: 0.6 }}>buka {fmtWhen(p.opened_ts).abs} ({fmtWhen(p.opened_ts).rel})</p>
             <div className="pnl-bar" style={{ background: "var(--cyan)" }} />
           </article>
         ))}
@@ -50,6 +51,7 @@ export function PaperView({ positions, expanded }: { positions: Position[]; expa
               </div>
               <p className={pos ? "pnl mono text-mint" : "pnl mono text-rose"}>{fmtSigned(p.pnl_pct)}</p>
               <p className="mono" style={{ fontSize: 11, opacity: 0.6 }}>{p.close_reason} · #{p.id}</p>
+              <p className="mono" style={{ fontSize: 11, opacity: 0.6 }}>tutup {fmtWhen(p.closed_ts).abs} ({fmtWhen(p.closed_ts).rel})</p>
               <div className="pnl-bar" style={{ background: pos ? "var(--mint)" : "var(--rose)" }} />
             </article>
           );

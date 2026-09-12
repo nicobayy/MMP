@@ -38,6 +38,6 @@ def test_telegram_format_escapes_html():
            "threshold": 85, "price_usd": 0.01, "dex": "raydium", "reason": "ok <script>",
            "vetoes": [], "scores": {"smart_money": 70}, "plan": {}, "meta": {"sm": {"auto_score": 70, "trusted_overlap": 1}, "liquidity": {"liquidity_usd": 1}, "mcap": 1, "url": "https://x"}}
     t = format_signal(sig)
-    assert "<script>" not in t and "&lt;script&gt;" in t
+    assert "<b>EVIL</b>" not in t and "&lt;b&gt;EVIL&lt;/b&gt;" in t
     s = format_summary(1, 2, [{"symbol": "A", "chain": "solana", "confidence": 90, "price_usd": 1}])
     assert "PASS=1" in s

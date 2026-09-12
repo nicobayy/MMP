@@ -233,7 +233,7 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict | None, str]:
             if not tok or not cht:
                 print("  telegram: skip (TELEGRAM_BOT_TOKEN/CHAT_ID kosong di .env)")
             else:
-                ok = send_telegram(format_signal(sig))
+                ok = send_telegram(format_signal(sig, str(cfg.get("mode", "filter"))))
                 if ok:
                     mark_alerted(con, sig.pair_address)
                 print(f"  telegram: {'sent' if ok else 'GAGAL kirim (token/chat-id/koneksi, cek scripts/test_telegram.py)'}")
@@ -437,13 +437,18 @@ def main():
         except Exception as e:
             log.debug("simpan batch_stats skip: %s", str(e)[:160])
         if args.notify and (cfg.get("telegram") or {}).get("send_summary", True):
-            from mmp.notifiers.telegram import creds as _creds2
-            tok2, cht2 = _creds2()
-            if not tok2 or not cht2:
-                print("Summary telegram: skip (TELEGRAM_BOT_TOKEN/CHAT_ID kosong di .env)")
+            if not passes:
+                print("Summary telegram: skip (tidak ada PASS)")
             else:
-                ok = send_telegram(format_summary(n_pass, n_reject, passes))
-                print(f"Summary telegram: {'sent' if ok else 'GAGAL kirim (token/chat-id/koneksi, cek scripts/test_telegram.py)'}")
+                from mmp.notifiers.telegram import creds as _creds2
+                tok2, cht2 = _creds2()
+                if not tok2 or not cht2:
+                    print("Summary telegram: skip (TELEGRAM_BOT_TOKEN/CHAT_ID kosong di .env)")
+                else:
+                    text = format_summary(n_pass, n_reject, passes,
+                                          str(cfg.get("mode", "filter")), n_skip)
+                    ok = send_telegram(text)
+                    print(f"Summary telegram: {'sent' if ok else 'GAGAL kirim (token/chat-id/koneksi, cek scripts/test_telegram.py)'}")
         return
 
     ap.print_help()

@@ -1,6 +1,8 @@
 # MMP Conservative Config v0.1
 # Semua angka bisa di-tune tanpa ubah kode.
 
+mode: filter  # mode mesin ini (filter/sniper) — dipakai badge Telegram, bukan logika skor
+
 signal:
   min_confidence: 85        # TIER-1: keyakinan penuh, size penuh
   require_smart_money: true # jika true, skor smart_money=0 => max skor 70-an (auto reject)

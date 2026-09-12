@@ -1,5 +1,7 @@
 # MMP Sniper Config v0.1 (P1) — terpisah dari filter aman.
 # DB terpisah via MMP_DB=data/mmp_sniper.db, service terpisah mmp-sniper.service.
+
+mode: sniper  # badge Telegram ⚡ SNIPER
 # Prinsip: deteksi cepat + murah, paper-wajib, size kecil. BUKAN pelonggaran veto inti
 # (honeypot/mintable/freeze tetap bunuh).
 

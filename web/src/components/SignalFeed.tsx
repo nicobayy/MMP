@@ -16,6 +16,7 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
   const [query, setQuery] = useState("");
   const [verdict, setVerdict] = useState<"ALL" | "PASS" | "REJECT">("ALL");
   const [chain, setChain] = useState<string>("ALL");
+  const [mode, setMode] = useState<"ALL" | "filter" | "sniper">("ALL");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filtered = useMemo(
@@ -23,6 +24,7 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
       signals.filter((s) => {
         if (verdict !== "ALL" && s.verdict !== verdict) return false;
         if (chain !== "ALL" && s.chain !== chain) return false;
+        if (mode !== "ALL" && (s.mode || "filter") !== mode) return false;
         if (query) {
           const q = query.toLowerCase();
           const sym = `${s.symbol} ${s.chain} ${s.token} ${s.pair_addr}`.toLowerCase();
@@ -30,17 +32,17 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
         }
         return true;
       }),
-    [signals, query, verdict, chain]
+    [signals, query, verdict, chain, mode]
   );
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const selected = filtered.find((s) => s.id === selectedId) ?? filtered[0] ?? signals[0];
 
   const downloadCsv = () => {
-    const head = "id,ts,verdict,tier,confidence,symbol,chain,price,mcap,liq,grade,reason";
+    const head = "id,ts,verdict,tier,confidence,symbol,chain,price,mcap,liq,grade,mode,reason";
     const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const lines = filtered.map((s) =>
-      [s.id, s.ts, s.verdict, s.tier, s.confidence, s.symbol, s.chain, s.price, s.mcap, s.liq, s.grade, s.reason].map(esc).join(",")
+      [s.id, s.ts, s.verdict, s.tier, s.confidence, s.symbol, s.chain, s.price, s.mcap, s.liq, s.grade, s.mode || "filter", s.reason].map(esc).join(",")
     );
     const blob = new Blob([[head, ...lines].join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
@@ -90,6 +92,11 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
                   {v === "ALL" ? "Semua" : v}
                 </button>
               ))}
+              {(["ALL", "filter", "sniper"] as const).map((v) => (
+                <button key={v} type="button" className={mode === v ? "btn active" : "btn"} onClick={() => setMode(v)}>
+                  {v === "ALL" ? "Filter+Sniper" : v === "filter" ? "Filter" : "Sniper"}
+                </button>
+              ))}
               <select
                 value={chain}
                 onChange={(e) => setChain(e.target.value)}
@@ -121,7 +128,7 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
               >
                 <span>
                   <strong className="feed-pair mono">{s.symbol || "?"} <span style={{ opacity: 0.5 }}>/ {s.dex ?? "?"}</span></strong>
-                  <small className="feed-chain mono">{s.chain}</small>
+                  <small className="feed-chain mono">{s.chain} · {((s.mode || "filter") === "sniper" ? "SNIPER" : "FILTER")}</small>
                 </span>
                 <span className={s.verdict === "PASS" ? "tier-badge" : "tier-badge reject"}>{tierBadge(s.verdict, s.tier)}</span>
                 <span className="conf-bar">
@@ -152,7 +159,7 @@ export function Inspector({ s }: { s: Signal }) {
         <p className="kicker mono">Inspeksi Sinyal · #{s.id}</p>
         <div className="inspector-title">
           <h3>{s.symbol || "?"}</h3>
-          <span className="verdict-badge mono">{s.verdict}{s.verdict === "PASS" ? ` · T${s.tier}` : ""}</span>
+          <span className="verdict-badge mono">{s.verdict}{s.verdict === "PASS" ? ` · T${s.tier}` : ""} · {(s.mode || "filter") === "sniper" ? "SNIPER" : "FILTER"}</span>
         </div>
       </div>
       <div className="plan-grid">

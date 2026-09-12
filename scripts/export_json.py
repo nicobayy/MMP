@@ -63,7 +63,7 @@ def _thresholds() -> tuple[float, float]:
         return 85.0, 75.0
 
 
-def _flatten_signal(row: tuple) -> dict:
+def _flatten_signal(row: tuple, mode: str = "filter") -> dict:
     sid, ts, verdict, symbol, chain, token, pair_addr, price, conf, reason, payload = row
     d = _loads(payload)
     meta = d.get("meta") or {}
@@ -89,6 +89,7 @@ def _flatten_signal(row: tuple) -> dict:
         "tp_pct": plan.get("tp_pct"), "rr": plan.get("RR"),
         "size_usd": plan.get("size_usd"), "risk_pct": plan.get("risk_pct"),
         "checklist": meta.get("checklist") or [],
+        "mode": mode,
     }
 
 
@@ -99,9 +100,17 @@ def _write_atomic(path: Path, obj: dict) -> None:
     os.replace(tmp, path)
 
 
-def export_all(out_dir: Path, limit: int = 1000, paper_limit: int = 500) -> dict:
-    db = db_path()
-    con = connect(db)
+def _read_db(db_file: str, limit: int, paper_limit: int, mode: str) -> tuple[list, list, list, dict]:
+    """Baca 1 file DB -> (rows, positions, batches, counts). File hilang = kosong."""
+    try:
+        if not Path(db_file).exists():
+            return [], [], [], {}
+    except Exception:
+        return [], [], [], {}
+    try:
+        con = connect(db_file)
+    except Exception:
+        return [], [], [], {}
     con.row_factory = sqlite3.Row
     try:
         rows = con.execute(
@@ -130,7 +139,7 @@ def export_all(out_dir: Path, limit: int = 1000, paper_limit: int = 500) -> dict
             except Exception:
                 return None
 
-        ops = {
+        counts = {
             "last_scan": _one("SELECT MAX(ts) FROM signals"),
             "n_today": _one("SELECT COUNT(*) FROM signals WHERE date(ts)=date('now')") or 0,
             "n_total": _one("SELECT COUNT(*) FROM signals") or 0,
@@ -142,11 +151,24 @@ def export_all(out_dir: Path, limit: int = 1000, paper_limit: int = 500) -> dict
             "kol7": _one("SELECT COUNT(*) FROM kol_callouts"
                          " WHERE ts >= datetime('now','-7 days')") or 0,
         }
+        for p in positions:
+            p["mode"] = mode
+        return list(rows), positions, batches, counts
     finally:
         try:
             con.close()
         except Exception:
             pass
+
+
+def export_all(out_dir: Path, limit: int = 1000, paper_limit: int = 500,
+               db: str | None = None, sniper_db: str | None = None) -> dict:
+    # Path eksplisit (bukan env) agar filter + sniper menulis gabungan yang sama
+    # siapa pun yang export. Default = dua file standar bila ada.
+    _db = db or str(ROOT / "data" / "mmp.db")
+    _sdb = sniper_db if sniper_db is not None else str(ROOT / "data" / "mmp_sniper.db")
+    rows_f, pos_f, batches, ops = _read_db(_db, limit, paper_limit, "filter")
+    rows_s, pos_s, _batches_s, sops = _read_db(_sdb, limit, paper_limit, "sniper") if _sdb else ([], [], [], {})
 
     t1, t2 = _thresholds()
     now = _now_iso()
@@ -155,16 +177,31 @@ def export_all(out_dir: Path, limit: int = 1000, paper_limit: int = 500) -> dict
     except Exception:
         killed = False
     try:
-        db_size = Path(db).stat().st_size if Path(db).exists() else 0
+        db_size = Path(_db).stat().st_size if Path(_db).exists() else 0
     except Exception:
         db_size = 0
 
-    signals = [_flatten_signal(r) for r in rows]
+    flat_f = [_flatten_signal(r, "filter") for r in rows_f]
+    flat_s = [_flatten_signal(r, "sniper") for r in rows_s]
+    # ID antar-DB tidak sebanding (autoincrement per file) -> urut by ts desc.
+    signals = sorted(flat_f + flat_s, key=lambda s: str(s.get("ts") or ""), reverse=True)[: int(limit)]
+    positions = sorted(pos_f + pos_s, key=lambda p: int(p.get("id") or 0), reverse=True)[: int(paper_limit)]
     n_pass = sum(1 for s in signals if s["verdict"] == "PASS")
+    n_pass_f = sum(1 for s in signals if s["verdict"] == "PASS" and s.get("mode") == "filter")
+    n_pass_s = sum(1 for s in signals if s["verdict"] == "PASS" and s.get("mode") == "sniper")
+    ops = dict(ops or {})
+    if sops:
+        ops["sniper_n_open"] = sops.get("n_open", 0)
+        ops["sniper_n_closed"] = sops.get("n_closed", 0)
+        ops["sniper_last_scan"] = sops.get("last_scan")
+        ops["sniper_n_today"] = sops.get("n_today", 0)
     payloads = {
         "meta.json": {"exported_at": now, "t1": t1, "t2": t2,
                       "n_signals": len(signals), "n_pass": n_pass,
-                      "n_open": ops["n_open"], "n_closed": ops["n_closed"]},
+                      "n_pass_filter": n_pass_f, "n_pass_sniper": n_pass_s,
+                      "n_filter": sum(1 for s in signals if s.get("mode") == "filter"),
+                      "n_sniper": sum(1 for s in signals if s.get("mode") == "sniper"),
+                      "n_open": ops.get("n_open", 0), "n_closed": ops.get("n_closed", 0)},
         "signals.json": {"exported_at": now, "signals": signals},
         "paper.json": {"exported_at": now, "positions": positions},
         "batches.json": {"exported_at": now, "batches": batches},
@@ -196,9 +233,14 @@ def main() -> None:
     ap.add_argument("--out", default=str(ROOT / "web" / "public" / "data"))
     ap.add_argument("--limit", type=int, default=1000)
     ap.add_argument("--paper-limit", type=int, default=500)
+    ap.add_argument("--db", default=None, help="DB filter (default data/mmp.db)")
+    ap.add_argument("--sniper-db", default=None, help="DB sniper, '' = matikan gabungan")
+    ap.add_argument("--no-sniper", action="store_true", help="Hanya export DB filter")
     args = ap.parse_args()
+    sdb = "" if args.no_sniper else args.sniper_db
     try:
-        res = export_all(Path(args.out), args.limit, args.paper_limit)
+        res = export_all(Path(args.out), args.limit, args.paper_limit,
+                         db=args.db, sniper_db=sdb)
     except Exception as e:
         print(f"Export gagal ({e})")
         raise SystemExit(1)

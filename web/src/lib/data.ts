@@ -33,6 +33,7 @@ export type Signal = {
   size_usd: number | null;
   risk_pct: number | null;
   checklist: CheckItem[];
+  mode: string;
 };
 
 export type Position = {
@@ -53,6 +54,7 @@ export type Position = {
   exit_price: number | null;
   pnl_pct: number | null;
   close_reason: string;
+  mode: string;
 };
 
 export type Batch = {
@@ -118,10 +120,12 @@ export async function loadBundle(): Promise<Bundle> {
     get<{ exported_at: string; batches: Batch[] }>("data/batches.json"),
     get<Ops>("data/ops.json"),
   ]);
+  const signals = (sig?.signals ?? []).map((s) => ({ ...s, mode: s.mode || "filter" }));
+  const positions = (pap?.positions ?? []).map((p) => ({ ...p, mode: p.mode || "filter" }));
   return {
     meta,
-    signals: sig?.signals ?? [],
-    positions: pap?.positions ?? [],
+    signals,
+    positions,
     batches: bat?.batches ?? [],
     ops,
     exportedAt: meta?.exported_at ?? sig?.exported_at ?? null,

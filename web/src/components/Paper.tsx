@@ -29,10 +29,10 @@ export function PaperView({ positions, expanded }: { positions: Position[]; expa
 
       <div className="cards cols-3">
         {opens.slice(0, expanded ? 9 : 3).map((p) => (
-          <article className="card" key={p.id}>
+          <article className="card" key={`${p.mode || "filter"}-${p.id}`}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span className="mono" style={{ fontWeight: 700 }}>{p.symbol} <span style={{ opacity: 0.5 }}>/ {p.chain}</span></span>
-              <span className="tier-badge">T{p.tier}</span>
+              <span className="tier-badge">T{p.tier}·{((p.mode || "filter") === "sniper" ? "S" : "F")}</span>
             </div>
             <p className="pnl mono">OPEN</p>
             <p className="mono" style={{ fontSize: 11, opacity: 0.6 }}>entry {fmtPx(p.entry)} · #{p.id}</p>
@@ -43,10 +43,10 @@ export function PaperView({ positions, expanded }: { positions: Position[]; expa
         {closed.slice(0, expanded ? 9 : 0).map((p) => {
           const pos = Number(p.pnl_pct ?? 0) > 0;
           return (
-            <article className="card" key={p.id}>
+            <article className="card" key={`${p.mode || "filter"}-${p.id}`}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span className="mono" style={{ fontWeight: 700 }}>{p.symbol} <span style={{ opacity: 0.5 }}>/ {p.chain}</span></span>
-                <span className="tier-badge">T{p.tier}</span>
+                <span className="tier-badge">T{p.tier}·{((p.mode || "filter") === "sniper" ? "S" : "F")}</span>
               </div>
               <p className={pos ? "pnl mono text-mint" : "pnl mono text-rose"}>{fmtSigned(p.pnl_pct)}</p>
               <p className="mono" style={{ fontSize: 11, opacity: 0.6 }}>{p.close_reason} · #{p.id}</p>

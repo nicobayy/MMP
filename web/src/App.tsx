@@ -12,7 +12,7 @@ const MODES: { id: Mode; label: string; desc: string }[] = [
   { id: "filter", label: "🛡️ Filter", desc: "validator aman · 60 mnt · SL15/TP30" },
   { id: "sniper", label: "⚡ Sniper", desc: "cepat · 1 mnt · SL6/TP15 · size kecil" },
 ];
-const POLL_MS = 45_000;
+const POLL_MS = 10_000;
 
 function Metric({ label, value, note, tone, solid }: { label: string; value: string; note: string; tone?: string; solid?: string }) {
   return (
@@ -154,7 +154,7 @@ export default function App() {
             >
               {theme === "dark" ? "☀️ Siang" : "🌙 Malam"}
             </button>
-            <span className="nav-sync mono">Data per {bundle?.exportedAt ?? "—"} · refresh 45 dtk</span>
+            <span className="nav-sync mono">Data per {bundle?.exportedAt ?? "—"} · refresh {POLL_MS / 1000} dtk</span>
           </nav>
         </div>
       </header>

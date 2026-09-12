@@ -46,10 +46,14 @@ def _epoch(ts: str) -> int:
         return 0
 
 def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: float,
-                    con=None) -> dict:
+                     con=None, end_ts: int | None = None) -> dict:
     """Tentukan outcome satu posisi paper. Return dict hasil settle.
 
     Prioritas: replay candle (high/low dari entry) -> fallback harga titik.
+    end_ts opsional (epoch detik): batasi candle yang dipakai replay sampai
+    momen close aktual — untuk perbandingan adil antar-profil di posisi yang
+    sudah CLOSED (tanpa ini replay ikut membaca dump berhari-hari setelah
+    close dan membalik TP asli jadi SL). Live settle tak mengisi ini.
     Return: {status, pnl_pct(net), exit_price, via} dengan via =
     'replay' | 'spot' | 'mark-to-market'. NO_DATA replay = fallback spot,
     bukan vonis.
@@ -105,6 +109,11 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
                                                  since=_epoch(o.get("opened_ts", "")) - 3600)
             except Exception:
                 pass
+    if end_ts:
+        try:
+            candles = [c for c in candles if int(c.get("ts", 0)) <= int(end_ts)]
+        except (TypeError, ValueError):
+            pass
     if candles and tr_enabled:
         # Profil sniper: TP cepat + trailing runner (config paper.trailing).
         r = simulate_trailing_exit(_epoch(o.get("opened_ts", "")), float(o.get("entry") or 0),

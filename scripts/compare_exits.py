@@ -57,32 +57,30 @@ def main() -> None:
 
     rows = con.execute(
         "SELECT id, symbol, chain, token, pair_addr, entry, sl, tp, signal_id,"
-        " opened_ts, close_reason, pnl_pct FROM paper_positions"
+        " opened_ts, closed_ts, close_reason, pnl_pct FROM paper_positions"
         " WHERE status='CLOSED' AND entry > 0 ORDER BY id").fetchall()
     if not rows:
         print("Belum ada posisi CLOSED. Tunggu settle dulu.")
         return
-    print(f"Profil A = config aktif | Profil B = TP {args.tp2}% + trail {args.act2}/{args.cb2}")
+    print(f"Profil A = AKTUAL live (TP15+trail, ground truth) |"
+          f" Profil B = simulasi TP {args.tp2}% + trail {args.act2}/{args.cb2} sampai kini")
     totA = totB = 0.0
     nA = nB = 0
-    for (pid, sym, ch, tok, pair, entry, sl, tp, sid, opened, reason, pnl) in rows:
+    for (pid, sym, ch, tok, pair, entry, sl, tp, sid, opened, closed_ts, reason, pnl) in rows:
         o = {"chain": ch, "token": tok, "pair_addr": pair, "entry": entry,
              "sl": sl, "tp": tp, "opened_ts": opened}
-        s, f = effective_costs(_liq_of(con, sid or 0), slip0, fee0, cfg)
-        rA = settle_position(o, cfg, timeout_h, s, f, con)
+        a = f"{reason} {pnl}%"
+        totA += float(pnl or 0)
+        nA += 1
         oB = dict(o, tp=(entry or 0) * (1 + float(args.tp2) / 100))
         s2, f2 = effective_costs(_liq_of(con, sid or 0), slip0, fee0, cfgB)
         rB = settle_position(oB, cfgB, timeout_h, s2, f2, con)
-        a = f"{rA['status']} {rA['pnl_pct']}%"
         b = f"{rB['status']} {rB['pnl_pct']}%"
-        if rA["status"] in ("TP", "SL", "TIMEOUT", "TRAIL"):
-            totA += float(rA["pnl_pct"])
-            nA += 1
         if rB["status"] in ("TP", "SL", "TIMEOUT", "TRAIL"):
             totB += float(rB["pnl_pct"])
             nB += 1
-        print(f"#{pid} {sym}: aktual={reason} {pnl}% | A={a} ({rA['via']}) | B={b} ({rB['via']})")
-    print(f"Total A: {round(totA, 2)}% dari {nA} | Total B: {round(totB, 2)}% dari {nB} | n={len(rows)}")
+        print(f"#{pid} {sym}: aktual={a} | B={b} ({rB['via']})")
+    print(f"Total aktual: {round(totA, 2)}% dari {nA} | Total B: {round(totB, 2)}% dari {nB} | n={len(rows)}")
 
 
 if __name__ == "__main__":

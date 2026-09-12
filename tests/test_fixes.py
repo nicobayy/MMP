@@ -102,6 +102,36 @@ def test_settle_spot_closes_despite_stale_candles(monkeypatch):
     r = paper.settle_position(o, cfg, 6.0, 1.0, 0.3, con)
     assert r["status"] == "SL", f"spot -15% wajib SL, dapat {r}"
 
+def test_settle_end_ts_bounds_replay(monkeypatch):
+    """Candle setelah close aktual wajib diabaikan (perbandingan profil adil)."""
+    import importlib.util
+    from pathlib import Path as _P
+    spec = importlib.util.spec_from_file_location(
+        "paper_mod2", str(_P(__file__).resolve().parents[1] / "scripts" / "paper.py"))
+    paper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(paper)
+    con = sqlite3.connect(":memory:")
+    from mmp.storage import candles as cstore
+    cstore.init(con)
+    now = int(__import__("time").time())
+    cstore.upsert_candles(con, "solana", "POOL2", "hour", [
+        {"ts": now - 7200, "o": 100.0, "h": 110.0, "l": 99.0, "c": 108.0, "v": 1.0},
+        {"ts": now - 3600, "o": 108.0, "h": 109.0, "l": 50.0, "c": 60.0, "v": 1.0},
+    ])
+    monkeypatch.setattr(paper.ohlcv_mod, "resolve_pool", lambda c, t: "POOL2")
+    monkeypatch.setattr(paper.ohlcv_mod, "fetch", lambda *a, **k: [])
+    monkeypatch.setattr(paper.pxr, "resolve_price", lambda c, t, p="": (100.0, "dexscreener"))
+    from datetime import datetime, timezone
+    opened = datetime.fromtimestamp(now - 8000, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    o = {"chain": "solana", "token": "M", "pair_addr": "P", "entry": 100.0,
+         "sl": 94.0, "tp": 115.0, "opened_ts": opened}
+    cfg = {"position": {"default_stop_loss_pct": 6.0, "default_take_profit_pct": 15.0},
+           "backtest": {"replay_limit": 500}}
+    r_bound = paper.settle_position(o, cfg, 6.0, 1.0, 0.3, con, end_ts=now - 5000)
+    assert r_bound["status"] == "OPEN", f"candle dump setelah bound wajib diabaikan, dapat {r_bound}"
+    r_full = paper.settle_position(o, cfg, 6.0, 1.0, 0.3, con)
+    assert r_full["status"] == "SL", f"tanpa bound dump terlihat -> SL, dapat {r_full}"
+
 def test_latest_boosts_endpoint_and_cache(monkeypatch):
     from mmp.collectors import cache as _cache
     from mmp.collectors import dexscreener as _dex

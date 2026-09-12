@@ -71,6 +71,37 @@ def test_paper_reentry_cooldown():
     dup3, _ = pstore.recently_closed(con, "solana", "M", "P", 0)
     assert dup3 is False, "cooldown 0 = mati"
 
+def test_settle_spot_closes_despite_stale_candles(monkeypatch):
+    """Regresi: candle basi tanpa hit + spot jebol SL -> wajib SL, bukan OPEN.
+
+    Kasus nyata: CATAI/Stunk sniper entry lalu dump -22%, posisi stuck OPEN
+    karena replay di atas candle basi me-return OPEN dan cek spot di-skip.
+    """
+    import importlib.util
+    from pathlib import Path as _P
+    spec = importlib.util.spec_from_file_location(
+        "paper_mod", str(_P(__file__).resolve().parents[1] / "scripts" / "paper.py"))
+    paper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(paper)
+    con = sqlite3.connect(":memory:")
+    from mmp.storage import candles as cstore
+    cstore.init(con)
+    now = int(__import__("time").time())
+    # candle basi (2 jam lalu): open==close==entry, tak sentuh SL/TP
+    cstore.upsert_candles(con, "solana", "POOL1", "hour",
+                          [{"ts": now - 7200, "o": 100.0, "h": 100.0, "l": 100.0, "c": 100.0, "v": 1.0}])
+    monkeypatch.setattr(paper.ohlcv_mod, "resolve_pool", lambda c, t: "POOL1")
+    monkeypatch.setattr(paper.ohlcv_mod, "fetch", lambda *a, **k: [])
+    monkeypatch.setattr(paper.pxr, "resolve_price", lambda c, t, p="": (85.0, "dexscreener"))
+    from datetime import datetime, timezone
+    opened = datetime.fromtimestamp(now - 3600, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    o = {"chain": "solana", "token": "M", "pair_addr": "P", "entry": 100.0,
+         "sl": 94.0, "tp": 115.0, "opened_ts": opened}
+    cfg = {"position": {"default_stop_loss_pct": 6.0, "default_take_profit_pct": 15.0},
+           "backtest": {"replay_limit": 500}}
+    r = paper.settle_position(o, cfg, 6.0, 1.0, 0.3, con)
+    assert r["status"] == "SL", f"spot -15% wajib SL, dapat {r}"
+
 def test_settle_timeout():
     r = settle(100, 110, 15, 30, timeout_hit=True)
     assert r == {"status": "TIMEOUT", "pnl_pct": 10.0}

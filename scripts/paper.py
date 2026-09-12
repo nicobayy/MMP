@@ -67,7 +67,7 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
         except (TypeError, ValueError, ZeroDivisionError):
             pass
     # 1. Replay candle (butuh pool + candle setelah entry)
-    pool = ohlcv_mod.resolve_pool(o.get("chain", ""), o.get("token", "") or "")
+    pool = ohlcv_mod.resolve_pool(o.get("chain", "") or "", o.get("token", "") or "")
     candles: list = []
     if pool and con is not None:
         try:
@@ -76,13 +76,25 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
                                          since=_epoch(o.get("opened_ts", "")) - 3600)
         except Exception:
             candles = []
-        if not candles:
+        # Refresh bila kosong ATAU candle terbaru basi: tanpa ini replay jalan di
+        # atas candle entry yang basi -> dump -22% tak terlihat -> OPEN selamanya
+        # (kasus CATAI/Stunk: harga jebol SL 6% tapi posisi tak kunjung tutup).
+        try:
+            import time as _t
+            newest = max(int(c.get("ts", 0)) for c in candles) if candles else 0
+            stale = (not candles) or (_t.time() - newest > 1800)
+        except Exception:
+            stale = True
+        if stale:
             try:
-                candles = ohlcv_mod.fetch(o.get("chain", ""), pool, "hour",
-                                          int((cfg.get("backtest") or {}).get("replay_limit", 500)))
-                cstore.upsert_candles(con, o.get("chain", ""), pool, "hour", candles)
+                fresh = ohlcv_mod.fetch(o.get("chain", ""), pool, "hour",
+                                        int((cfg.get("backtest") or {}).get("replay_limit", 500)))
+                if fresh:
+                    cstore.upsert_candles(con, o.get("chain", ""), pool, "hour", fresh)
+                    candles = cstore.get_candles(con, o.get("chain", ""), pool, "hour",
+                                                 since=_epoch(o.get("opened_ts", "")) - 3600)
             except Exception:
-                candles = []
+                pass
     if candles:
         r = replay_candles(_epoch(o.get("opened_ts", "")), float(o.get("entry") or 0),
                            sl_pct, tp_pct, candles, timeout_h=timeout_h)
@@ -92,11 +104,8 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
                 else (float(o.get("sl") or 0) if r["status"] == "SL" else float(candles[-1].get("c", o.get("entry") or 0)))
             return {"status": r["status"], "pnl_pct": net, "exit_price": exit_px,
                     "via": "replay", "gross": float(r.get("pnl_pct", 0.0))}
-        px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
-        if px:
-            cur = (px - float(o.get("entry") or px)) / float(o.get("entry") or px) * 100
-            return {"status": "OPEN", "pnl_pct": round(cur, 2), "exit_price": px, "via": "mark-to-market"}
-        return {"status": "NO_DATA", "pnl_pct": 0.0, "exit_price": 0.0, "via": "replay"}
+        # Replay tak menutup (candle kasar/jarang) -> JATUH ke cek spot di bawah.
+        # Jangan return OPEN di sini: harga spot yang jebol SL wajib menutup posisi.
     # 2. Fallback harga titik (mark-to-market)
     px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
     if not px:

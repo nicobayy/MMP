@@ -56,6 +56,21 @@ def test_paper_dedup():
     assert pstore.has_open(con, "P") is True
     assert pstore.has_open(con, "LAIN") is False
 
+def test_paper_reentry_cooldown():
+    con = sqlite3.connect(":memory:")
+    pstore.init(con)
+    assert pstore.recently_closed(con, "solana", "M", "P", 12.0) == (False, None)
+    pid = pstore.open_from_signal(con, {"db_id": 1, "symbol": "F", "chain": "solana",
+        "token_address": "M", "pair_address": "P", "price_usd": 10.0,
+        "plan": {"stop_loss": 8.5, "take_profit": 13.0}})
+    pstore.close_position(con, pid, 11.0, 10.0, "TP")
+    dup, _when = pstore.recently_closed(con, "solana", "M", "P2", 12.0)
+    assert dup is True, "token sama pair beda tetap diblokir"
+    dup2, _ = pstore.recently_closed(con, "solana", "LAIN", "P3", 12.0)
+    assert dup2 is False
+    dup3, _ = pstore.recently_closed(con, "solana", "M", "P", 0)
+    assert dup3 is False, "cooldown 0 = mati"
+
 def test_settle_timeout():
     r = settle(100, 110, 15, 30, timeout_hit=True)
     assert r == {"status": "TIMEOUT", "pnl_pct": 10.0}

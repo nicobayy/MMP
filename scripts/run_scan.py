@@ -246,6 +246,16 @@ def handle_pair(pair: dict, cfg, args, con) -> tuple[str, dict | None, str]:
             if pstore.has_open(con, sig.pair_address):
                 print("  paper: skip (sudah ada OPEN di pair ini)")
                 return sig.verdict, sig_dict, hp_status
+            rp = cfg.get("paper") or {}
+            try:
+                re_h = float(rp.get("reentry_cooldown_h", 12.0))
+            except (TypeError, ValueError):
+                re_h = 12.0
+            was_closed, when = pstore.recently_closed(
+                con, sig.chain, sig.token_address, sig.pair_address, re_h)
+            if was_closed:
+                print(f"  paper: skip (re-entry {sig.symbol} ditutup {when}, < {re_h}h)")
+                return sig.verdict, sig_dict, hp_status
             ok_new, why = guard.allow_new(con, cfg, sig.chain)
             if not ok_new:
                 print(f"  paper: skip (guard: {why})")

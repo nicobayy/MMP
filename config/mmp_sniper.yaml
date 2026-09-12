@@ -113,6 +113,7 @@ kol:
 paper:
   risk_pct: 0.25              # kecil: frekuensi tinggi
   timeout_h: 6                # sniper tak hold 72 jam
+  reentry_cooldown_h: 12      # tolak buka ulang token yang baru ditutup (anti-chase pucuk)
   slippage_pct: 1.0
   fee_pct: 0.3
   cost_tiers: [[20000, 3.0], [50000, 2.0]]

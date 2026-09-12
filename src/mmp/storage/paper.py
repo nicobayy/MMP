@@ -50,6 +50,41 @@ def has_open(con: sqlite3.Connection, pair_addr: str) -> bool:
     row = con.execute("SELECT 1 FROM paper_positions WHERE status='OPEN' AND pair_addr=? LIMIT 1", (pair_addr,)).fetchone()
     return row is not None
 
+def recently_closed(con: sqlite3.Connection, chain: str, token: str, pair_addr: str,
+                    hours: float = 12.0) -> tuple[bool, str | None]:
+    """True bila token yang sama sudah ada posisi CLOSED dalam < hours jam.
+
+    Mencegah re-entry chase: entry pertama TP (+15%), entry kedua di token sama
+    15 menit kemudian cenderung masuk di pucuk lalu SL (kasus Stunk/MM:
+    #1-#3 TP, #4-#5 SL). Kunci = chain:token (fallback pair).
+    """
+    if hours is not None and float(hours) <= 0:
+        return False, None
+    ch = (chain or "").strip()
+    tok = (token or "").strip()
+    try:
+        if tok:
+            row = con.execute(
+                "SELECT MAX(closed_ts) FROM paper_positions WHERE status='CLOSED'"
+                " AND LOWER(chain)=LOWER(?) AND LOWER(token)=LOWER(?)",
+                (ch, tok)).fetchone()
+        else:
+            row = con.execute(
+                "SELECT MAX(closed_ts) FROM paper_positions WHERE status='CLOSED'"
+                " AND pair_addr=?", (pair_addr,)).fetchone()
+        last_ts = str(row[0]) if row and row[0] else None
+        if not last_ts:
+            return False, None
+        from datetime import datetime, timedelta, timezone
+        last = datetime.fromisoformat(last_ts)
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        dup = datetime.now(timezone.utc) - last < timedelta(hours=float(hours))
+        return dup, last_ts
+    except Exception as e:
+        log.debug("recently_closed skip: %s", str(e)[:120])
+        return False, None
+
 def close_position(con: sqlite3.Connection, pid: int, exit_price: float, pnl_pct: float, reason: str):
     con.execute("UPDATE paper_positions SET status='CLOSED', closed_ts=CURRENT_TIMESTAMP,"
                 " exit_price=?, pnl_pct=?, close_reason=? WHERE id=?", (exit_price, pnl_pct, reason, pid))

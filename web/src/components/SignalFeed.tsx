@@ -11,12 +11,13 @@ function confWidth(v: number): string {
   return "42%";
 }
 
-export function SignalFeed({ signals }: { signals: Signal[] }) {
+export function SignalFeed({ signals, mode: modeProp, hideModeFilter }: { signals: Signal[]; mode?: string; hideModeFilter?: boolean }) {
   const chains = useMemo(() => [...new Set(signals.map((s) => s.chain))].sort(), [signals]);
   const [query, setQuery] = useState("");
   const [verdict, setVerdict] = useState<"ALL" | "PASS" | "REJECT">("ALL");
   const [chain, setChain] = useState<string>("ALL");
-  const [mode, setMode] = useState<"ALL" | "filter" | "sniper">("ALL");
+  const [modeInner, setModeInner] = useState<"ALL" | "filter" | "sniper">("ALL");
+  const mode = modeProp ?? modeInner;
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filtered = useMemo(
@@ -35,8 +36,9 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
     [signals, query, verdict, chain, mode]
   );
 
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected = filtered.find((s) => s.id === selectedId) ?? filtered[0] ?? signals[0];
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const keyOf = (s: { id: number; mode?: string }) => `${s.mode || "filter"}-${s.id}`;
+  const selected = filtered.find((s) => keyOf(s) === selectedId) ?? filtered[0] ?? signals[0];
 
   const downloadCsv = () => {
     const head = "id,ts,verdict,tier,confidence,symbol,chain,price,mcap,liq,grade,mode,reason";
@@ -92,8 +94,8 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
                   {v === "ALL" ? "Semua" : v}
                 </button>
               ))}
-              {(["ALL", "filter", "sniper"] as const).map((v) => (
-                <button key={v} type="button" className={mode === v ? "btn active" : "btn"} onClick={() => setMode(v)}>
+              {!hideModeFilter && (["ALL", "filter", "sniper"] as const).map((v) => (
+                <button key={v} type="button" className={mode === v ? "btn active" : "btn"} onClick={() => setModeInner(v)}>
                   {v === "ALL" ? "Filter+Sniper" : v === "filter" ? "Filter" : "Sniper"}
                 </button>
               ))}
@@ -122,9 +124,9 @@ export function SignalFeed({ signals }: { signals: Signal[] }) {
             {filtered.map((s) => (
               <button
                 type="button"
-                key={s.id}
-                onClick={() => setSelectedId(s.id)}
-                className={selected && selected.id === s.id ? "feed-row selected" : "feed-row"}
+                key={`${s.mode || "filter"}-${s.id}`}
+                onClick={() => setSelectedId(keyOf(s))}
+                className={(selected && keyOf(selected) === keyOf(s) ? "feed-row selected" : "feed-row") + ((s.mode || "filter") === "sniper" ? " mode-sniper" : "")}
               >
                 <span>
                   <strong className="feed-pair mono">{s.symbol || "?"} <span style={{ opacity: 0.5 }}>/ {s.dex ?? "?"}</span></strong>

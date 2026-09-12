@@ -31,7 +31,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mmp.config import db_path  # noqa: E402
 from mmp.storage.store import connect  # noqa: E402
 
 try:

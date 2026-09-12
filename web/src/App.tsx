@@ -7,6 +7,11 @@ import { loadBundle, vetoTop, type Bundle } from "./lib/data";
 
 type Tab = "Sinyal" | "Paper Positions" | "Cakupan" | "Operasional";
 const TABS: Tab[] = ["Sinyal", "Paper Positions", "Cakupan", "Operasional"];
+type Mode = "filter" | "sniper";
+const MODES: { id: Mode; label: string; desc: string }[] = [
+  { id: "filter", label: "🛡️ Filter", desc: "validator aman · 60 mnt · SL15/TP30" },
+  { id: "sniper", label: "⚡ Sniper", desc: "cepat · 1 mnt · SL6/TP15 · size kecil" },
+];
 const POLL_MS = 45_000;
 
 function Metric({ label, value, note, tone, solid }: { label: string; value: string; note: string; tone?: string; solid?: string }) {
@@ -25,6 +30,15 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [mode, setMode] = useState<Mode>(() => {
+    try {
+      const saved = window.localStorage.getItem("mmp-mode");
+      if (saved === "sniper" || saved === "filter") return saved;
+    } catch {
+      /* abaikan */
+    }
+    return "filter";
+  });
   const [theme, setTheme] = useState<string>(() => {
     try {
       const saved = window.localStorage.getItem("mmp-theme");
@@ -43,6 +57,14 @@ export default function App() {
       /* abaikan */
     }
   }, [theme]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("mmp-mode", mode);
+    } catch {
+      /* abaikan */
+    }
+  }, [mode]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -63,20 +85,28 @@ export default function App() {
 
   const m = useMemo(() => {
     if (!bundle) return null;
-    const n = bundle.signals.length;
-    const avg = n ? bundle.signals.reduce((a, s) => a + Number(s.confidence ?? 0), 0) / n : 0;
-    const blind = n ? bundle.signals.filter((s) => s.grade === "BLIND").length : 0;
-    const closed = bundle.positions.filter((p) => p.status === "CLOSED");
+    const all = bundle.signals.filter((s) => (s.mode || "filter") === mode);
+    const n = all.length;
+    const avg = n ? all.reduce((a, s) => a + Number(s.confidence ?? 0), 0) / n : 0;
+    const blind = n ? all.filter((s) => s.grade === "BLIND").length : 0;
+    const mpos = bundle.positions.filter((p) => (p.mode || "filter") === mode);
+    const closed = mpos.filter((p) => p.status === "CLOSED");
     const wins = closed.filter((p) => Number(p.pnl_pct ?? 0) > 0).length;
-    const vt = vetoTop(bundle.signals, 1)[0];
+    const vt = vetoTop(all, 1)[0];
+    const nPass = all.filter((s) => s.verdict === "PASS").length;
     return {
       n,
+      signals: all,
+      positions: mpos,
       avg: `${avg.toFixed(0)}%`,
       blindPct: n ? `${((blind / n) * 100).toFixed(1)}%` : "—",
       closedNote: closed.length ? `${wins}/${closed.length} win` : "belum ada CLOSED",
       vetoNote: vt ? `${vt.name} ×${vt.n}` : "belum ada veto",
+      nPass,
+      nOpen: mpos.filter((p) => p.status === "OPEN").length,
+      nClosed: closed.length,
     };
-  }, [bundle]);
+  }, [bundle, mode]);
 
   return (
     <div className="page">
@@ -144,23 +174,41 @@ export default function App() {
             </div>
           ) : (
             <>
+              <div className="mode-tabs" role="tablist" aria-label="Pilih mode">
+                {MODES.map((md) => {
+                  const c = bundle ? bundle.signals.filter((s) => (s.mode || "filter") === md.id).length : 0;
+                  return (
+                    <button
+                      key={md.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === md.id}
+                      className={mode === md.id ? "mode-tab active" : "mode-tab"}
+                      onClick={() => setMode(md.id)}
+                    >
+                      <strong>{md.label} · {c}</strong>
+                      <small className="mono">{md.desc}</small>
+                    </button>
+                  );
+                })}
+              </div>
               <section aria-label="Ringkasan" className="metrics">
-                <Metric label="Sinyal" value={String(m?.n ?? "—")} note={`${bundle?.meta?.n_pass ?? 0} PASS`} tone="text-mint" />
+                <Metric label={mode === "sniper" ? "Sinyal sniper" : "Sinyal filter"} value={String(m?.n ?? "—")} note={`${m?.nPass ?? 0} PASS`} tone="text-mint" />
                 <Metric label="Rata-rata confidence" value={m?.avg ?? "—"} note={m?.vetoNote ?? ""} solid="solid-rose" />
-                <Metric label="Paper closed" value={String(bundle?.ops?.n_closed ?? 0)} note={m?.closedNote ?? ""} solid="solid-cyan" />
-                <Metric label="BLIND share" value={m?.blindPct ?? "—"} note="tanpa sumber keamanan" tone="text-rose" />
+                <Metric label="Paper closed" value={String(m?.nClosed ?? 0)} note={m?.closedNote ?? ""} solid="solid-cyan" />
+                <Metric label="Paper open" value={String(m?.nOpen ?? 0)} note={mode === "sniper" ? "max 3 · SL6/TP15" : "max 5 · SL15/TP30"} tone="text-rose" />
               </section>
 
               {tab === "Sinyal" && (
                 <>
-                  <div style={{ marginTop: 32 }}><SignalFeed signals={bundle?.signals ?? []} /></div>
+                  <div style={{ marginTop: 32 }}><SignalFeed signals={m?.signals ?? []} mode={mode} hideModeFilter /></div>
                   <div className="grid-12">
-                    <div className="col-8"><PaperView positions={bundle?.positions ?? []} /></div>
+                    <div className="col-8"><PaperView positions={m?.positions ?? []} /></div>
                     <div className="col-4"><CoverageView batches={bundle?.batches ?? []} /></div>
                   </div>
                 </>
               )}
-              {tab === "Paper Positions" && <PaperView positions={bundle?.positions ?? []} expanded />}
+              {tab === "Paper Positions" && <PaperView positions={m?.positions ?? []} expanded />}
               {tab === "Cakupan" && <CoverageView batches={bundle?.batches ?? []} expanded />}
               {tab === "Operasional" && <OpsView ops={bundle?.ops ?? null} meta={bundle?.meta ?? null} />}
             </>

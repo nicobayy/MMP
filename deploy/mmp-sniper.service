@@ -1,0 +1,21 @@
+[Unit]
+Description=MMP sniper 1m (terpisah dari filter 60m)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# GANTI: user + path sesuai VPS kamu (contoh ini /root/MMP ala VPS aktif)
+User=root
+WorkingDirectory=/root/MMP
+EnvironmentFile=/root/MMP/.env
+Environment=MMP_DB=data/mmp_sniper.db
+Environment=MMP_CONFIG=config/mmp_sniper.yaml
+ExecStart=/root/MMP/venv/bin/python scripts/live.py --chains solana --limit 10 --interval-min 1 --port 8081 --config config/mmp_sniper.yaml
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

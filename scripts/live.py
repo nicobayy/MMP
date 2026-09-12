@@ -137,6 +137,8 @@ def main() -> None:
     sys.argv = [sys.argv[0], "--interval-min", str(args.interval_min),
                 "--limit", str(args.limit), "--chains", args.chains,
                 "--rounds", str(args.rounds)]
+    if args.config:
+        sys.argv += ["--config", args.config]
     if args.notify:
         sys.argv.append("--notify")
     else:

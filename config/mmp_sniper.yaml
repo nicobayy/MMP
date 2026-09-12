@@ -1,0 +1,148 @@
+# MMP Sniper Config v0.1 (P1) — terpisah dari filter aman.
+# DB terpisah via MMP_DB=data/mmp_sniper.db, service terpisah mmp-sniper.service.
+# Prinsip: deteksi cepat + murah, paper-wajib, size kecil. BUKAN pelonggaran veto inti
+# (honeypot/mintable/freeze tetap bunuh).
+
+signal:
+  min_confidence: 70        # TIER-1 sniper (lebih rendah dari filter 85, wajar frekuensi tinggi)
+  require_smart_money: false # sniper tak menunggu tracker matang
+  require_kol_or_sm: false
+  permissive_confidence: 65
+
+tiers:
+  tier2_min: 60
+  tier2_size_pct: 0.5        # setengah dari paper.risk_pct sniper
+  tier2_require_dual_source: false  # sniper tanpa Birdeye di P1 -> dual dimatikan
+  dual_max_divergence: 3.0
+  tier2_evm_tax_required: false
+
+weights:
+  # total harus 100 — sniper berat ke exit + momentum, ringan ke SM/KOL
+  liquidity_exit: 30
+  risk_safety: 20
+  token_metrics: 30
+  smart_money: 15
+  kol: 5
+
+risk:
+  min_liquidity_usd: 12000
+  min_volume_h24_usd: 10000
+  min_txns_h24: 50
+  min_holders: 50
+  max_buy_tax_pct: 5
+  max_sell_tax_pct: 5
+  max_top10_holders_pct: 50
+  min_lp_lock_pct: 0          # 0 = tak jadi veto (data gratis tak ada)
+  max_fdv_to_mcap_ratio: 10.0
+  min_pair_age_minutes: 3     # mulai 3m, turunkan ke 1-2m bila expectancy P1 hijau
+  blocked_labels: ["honeypot", "mintable-risk", "freezable-risk"]
+  veto_on_blind: false
+  veto_on_unknown_age: false
+
+liquidity:
+  min_liquidity_usd: 12000
+  min_volume_to_liquidity_ratio: 1.0
+  max_price_impact_1k_pct: 8.0
+  min_dex_count: 1
+
+token_metrics:
+  min_price_change_h24_pct: -40
+  max_price_change_h24_pct: 800
+  min_price_change_h1_pct: -30
+  min_volume_h1_usd: 2000
+
+position:
+  max_risk_per_trade_pct: 1.0
+  default_stop_loss_pct: 6.0
+  default_take_profit_pct: 15.0  # RR 1:2.5
+  min_reward_risk: 1.5
+  capital_usd: 1000
+
+chains:
+  enabled: ["solana"]
+  priority: ["solana"]
+  per_chain_limit: 10
+
+helius:
+  enabled: true
+  timeout_sec: 15
+  max_signatures: 100
+
+smart_money_auto:
+  enabled: true
+  min_score_to_count: 50
+  max_auto_score: 85
+  healthy_buy_ratio_min: 0.50
+  healthy_buy_ratio_max: 0.70
+  max_top_holder_pct: 20.0
+
+tracker:
+  enabled: true
+  min_trades: 5
+  min_win_rate: 0.60
+  whale_window_h: 24
+  whale_min_sol: 0.5
+  watch_wallets: 10
+  watch_sigs: 20
+
+telegram:
+  cooldown_min: 15
+  send_summary: true
+
+dedup:
+  cooldown_min: 15
+  # Bypass darurat: run_scan --no-dedup / --dedup-min 0
+
+geckoterminal:
+  enabled: false              # solana-only di P1, matikan agar hemat
+
+birdeye:
+  enabled: false              # mati di P1 (hindari 429 + hemat kredit)
+
+honeypot_is:
+  enabled: false              # solana-only di P1
+
+kol:
+  window_hours: 48
+  shill_window_hours: 6
+  shill_min_handles: 3
+  shill_cap: 30
+
+paper:
+  risk_pct: 0.25              # kecil: frekuensi tinggi
+  timeout_h: 6                # sniper tak hold 72 jam
+  slippage_pct: 1.0
+  fee_pct: 0.3
+  cost_tiers: [[20000, 3.0], [50000, 2.0]]
+  # auto-open via: run_scan --paper / scheduler --paper (dedup 1 OPEN per pair)
+
+portfolio:
+  max_open_positions: 3
+  max_per_chain: 3
+  daily_stop_pct: -2.0
+
+backtest:
+  note: "sniper forward-measure, bukan klaim masa lalu"
+  replay_tf: minute
+  replay_limit: 500
+  min_n_per_bucket: 5
+
+scheduler:
+  interval_min: 1
+
+api_budgets:
+  helius: 100
+  birdeye: 0
+  honeypot_is: 0
+  geckoterminal: 30
+  dexscreener: 600
+
+concurrency:
+  scan_workers: 2
+  universe_workers: 2
+  per_source:
+    dexscreener: 2
+    helius: 2
+    birdeye: 1
+    honeypot_is: 1
+    geckoterminal: 2

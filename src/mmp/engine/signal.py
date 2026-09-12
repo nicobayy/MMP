@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, field
 
 from ..analyzers import kol as kol_an
 from ..analyzers import liquidity as liq_an
+from ..analyzers import momentum as mom_an
 from ..analyzers import risk as risk_an
 from ..analyzers import smart_money as sm_an
 from ..analyzers import smart_money_auto as sma_an
@@ -88,6 +89,11 @@ def generate(pair: dict, cfg: dict, enrichment: dict | None = None,
             merged.setdefault(k, v)
         enrichment = merged
     vetoes = risk_an.check_hard_veto(pair, cfg, enrichment)
+    # Gate momentum sniper (opt-in via cfg `momentum.enabled`): bukti beli
+    # cepat sebelum skor dihitung. Filter tak punya section ini -> tak berubah.
+    mom_ok, mom_notes = mom_an.momentum_gate(pair, cfg)
+    if not mom_ok:
+        vetoes = vetoes + [f"MOMENTUM: {'; '.join(mom_notes[:2])}"]
     grade, grade_missing = risk_an.data_grade(pair, enrichment)
     if grade == "BLIND" and (cfg.get("risk") or {}).get("veto_on_blind", False):
         vetoes = vetoes + [f"DATA_BLIND: tanpa data keamanan ({', '.join(grade_missing)})"]

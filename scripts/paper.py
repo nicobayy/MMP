@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from mmp.backtest.engine import apply_costs, effective_costs, settle, summarize
+from mmp.backtest.engine import CLOSED_STATUSES, apply_costs, effective_costs, settle, simulate_trailing_exit, summarize
 from mmp.backtest.replay import replay as replay_candles
 from mmp.collectors import ohlcv as ohlcv_mod
 from mmp.collectors import prices as pxr
@@ -67,12 +67,22 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
         except (TypeError, ValueError, ZeroDivisionError):
             pass
     # 1. Replay candle (butuh pool + candle setelah entry)
+    tf = str((cfg.get("backtest") or {}).get("replay_tf", "hour"))
+    if tf not in ("minute", "hour", "day"):
+        tf = "hour"
+    tr = (cfg.get("paper") or {}).get("trailing") or {}
+    tr_enabled = bool(tr.get("enabled", False))
+    try:
+        tr_act = float(tr.get("activation_pct", 8.0))
+        tr_cb = float(tr.get("callback_pct", 4.0))
+    except (TypeError, ValueError):
+        tr_act, tr_cb = 8.0, 4.0
     pool = ohlcv_mod.resolve_pool(o.get("chain", "") or "", o.get("token", "") or "")
     candles: list = []
     if pool and con is not None:
         try:
             cstore.init(con)
-            candles = cstore.get_candles(con, o.get("chain", ""), pool, "hour",
+            candles = cstore.get_candles(con, o.get("chain", ""), pool, tf,
                                          since=_epoch(o.get("opened_ts", "")) - 3600)
         except Exception:
             candles = []
@@ -87,18 +97,28 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
             stale = True
         if stale:
             try:
-                fresh = ohlcv_mod.fetch(o.get("chain", ""), pool, "hour",
+                fresh = ohlcv_mod.fetch(o.get("chain", ""), pool, tf,
                                         int((cfg.get("backtest") or {}).get("replay_limit", 500)))
                 if fresh:
-                    cstore.upsert_candles(con, o.get("chain", ""), pool, "hour", fresh)
-                    candles = cstore.get_candles(con, o.get("chain", ""), pool, "hour",
+                    cstore.upsert_candles(con, o.get("chain", ""), pool, tf, fresh)
+                    candles = cstore.get_candles(con, o.get("chain", ""), pool, tf,
                                                  since=_epoch(o.get("opened_ts", "")) - 3600)
             except Exception:
                 pass
-    if candles:
+    if candles and tr_enabled:
+        # Profil sniper: TP cepat + trailing runner (config paper.trailing).
+        r = simulate_trailing_exit(_epoch(o.get("opened_ts", "")), float(o.get("entry") or 0),
+                                   candles, sl_pct, tp_pct, timeout_h,
+                                   activation_pct=tr_act, callback_pct=tr_cb)
+        if r.get("status") in CLOSED_STATUSES:
+            net = apply_costs(float(r.get("pnl_pct", 0.0)), slip, fee)
+            return {"status": r["status"], "pnl_pct": net, "exit_price": r.get("exit_price", 0.0),
+                    "via": "trail", "gross": float(r.get("pnl_pct", 0.0))}
+        # Tak menutup -> jatuh ke cek spot di bawah (jaring pengaman).
+    elif candles:
         r = replay_candles(_epoch(o.get("opened_ts", "")), float(o.get("entry") or 0),
                            sl_pct, tp_pct, candles, timeout_h=timeout_h)
-        if r.get("status") in ("TP", "SL", "TIMEOUT"):
+        if r.get("status") in CLOSED_STATUSES:
             net = apply_costs(float(r.get("pnl_pct", 0.0)), slip, fee)
             exit_px = float(o.get("tp") or 0) if r["status"] == "TP" \
                 else (float(o.get("sl") or 0) if r["status"] == "SL" else float(candles[-1].get("c", o.get("entry") or 0)))
@@ -112,7 +132,7 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
         return {"status": "NO_DATA", "pnl_pct": 0.0, "exit_price": 0.0, "via": "spot"}
     timed_out = age_hours(o.get("opened_ts", "")) >= timeout_h
     r = settle(o["entry"], px, sl_pct, tp_pct, timeout_hit=timed_out)
-    if r["status"] in ("TP", "SL", "TIMEOUT"):
+    if r["status"] in CLOSED_STATUSES:
         net = apply_costs(r["pnl_pct"], slip, fee)
         return {"status": r["status"], "pnl_pct": net, "exit_price": px,
                 "via": "spot", "gross": r["pnl_pct"]}
@@ -169,7 +189,7 @@ def main():
             except Exception:
                 _slip, _fee = slip, fee
             r = settle_position(o, cfg, timeout_h, _slip, _fee, con)
-            if r["status"] in ("TP", "SL", "TIMEOUT") and not args.mark_to_market:
+            if r["status"] in CLOSED_STATUSES and not args.mark_to_market:
                 pstore.close_position(con, o["id"], r["exit_price"], r["pnl_pct"], r["status"])
                 fed = wal.attribute_token_outcome(con, o.get("token", ""), r["pnl_pct"] > 0, r["pnl_pct"]) if o.get("token") else 0
                 print(f"- closed #{o['id']} {o['symbol']} {r['status']} {r['pnl_pct']}% (via {r['via']}, wallets fed: {fed})")

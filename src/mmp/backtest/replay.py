@@ -50,13 +50,13 @@ def bucket(conf: float, width: int = 5) -> str:
     return f"{lo}-{lo + width - 1}"
 
 def calibrate(rows: list[dict], width: int = 5) -> dict:
-    """rows: [{conf, tier, pnl_pct, status}] dengan status TP/SL/TIMEOUT.
+    """rows: [{conf, tier, pnl_pct, status}] dengan status TP/SL/TIMEOUT/TRAIL.
     Return per-bucket + per-tier: {n, winrate, avg_win, avg_loss, expectancy, avg_mfe, avg_mae}.
     """
-    from .engine import expectancy
+    from .engine import CLOSED_STATUSES, expectancy
     out: dict[str, dict] = {}
     for r in rows:
-        if r.get("status") not in ("TP", "SL", "TIMEOUT"):
+        if r.get("status") not in CLOSED_STATUSES:
             continue
         key = f"{bucket(r.get('conf', 0), width)}|T{r.get('tier', 1)}"
         b = out.setdefault(key, {"n": 0, "wins": 0, "pnl": [], "mfe": [], "mae": []})

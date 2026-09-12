@@ -53,6 +53,16 @@ token_metrics:
   min_price_change_h1_pct: -30
   min_volume_h1_usd: 2000
 
+# Gate momentum sniper (diveto bila gagal): bukti beli cepat, bukan tebakan.
+# Tanpa bukti -> REJECT jujur. Filter tak punya section ini -> tak berubah.
+momentum:
+  enabled: true
+  min_h1_pct: 0.0         # tolak yang h1 negatif (dumping); pair segar ~0 lolos via cek lain
+  min_buy_ratio: 0.55     # dominasi buyer dari txns h24
+  min_vol_h1_usd: 2000    # ada uang masuk sejam terakhir
+  min_intensity: 1.5      # vol h1 >= 1.5x rata-rata per-jam (berakselerasi)
+  max_age_minutes: 180    # hanya token segar <= 3 jam
+
 position:
   max_risk_per_trade_pct: 1.0
   default_stop_loss_pct: 6.0
@@ -64,6 +74,9 @@ chains:
   enabled: ["solana"]
   priority: ["solana"]
   per_chain_limit: 10
+
+universe:
+  latest_limit: 10  # sumber boost terbaru (rotasi cepat); 0 = mati. Veto tetap berlaku.
 
 helius:
   enabled: true
@@ -114,6 +127,10 @@ paper:
   risk_pct: 0.25              # kecil: frekuensi tinggi
   timeout_h: 6                # sniper tak hold 72 jam
   reentry_cooldown_h: 120     # tolak buka ulang token yang baru ditutup (anti-chase pucuk)
+  trailing:                   # profil exit cepat + trailing runner (paper-only)
+    enabled: true
+    activation_pct: 8.0       # kunci profit setelah peak +8%
+    callback_pct: 4.0         # keluar bila turun 4% dari peak
   slippage_pct: 1.0
   fee_pct: 0.3
   cost_tiers: [[20000, 3.0], [50000, 2.0]]

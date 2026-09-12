@@ -10,6 +10,10 @@ def expectancy(winrate: float, avg_win: float, avg_loss: float) -> float:
     """E = p*W - (1-p)*L. Harus > 0 agar layak."""
     return winrate * avg_win - (1 - winrate) * avg_loss
 
+
+# Status yang dianggap posisi sudah tutup (masuk expectancy/report/kalibrasi).
+CLOSED_STATUSES = ("TP", "SL", "TIMEOUT", "TRAIL")
+
 def apply_costs(pnl_pct: float, slippage_pct: float = 0.5, fee_pct: float = 0.2) -> float:
     """PnL bersih setelah asumsi biaya round-trip (masuk+keluar).
     Model kasar & eksplisit: bukan simulasi order book. Naikkan angka ini
@@ -62,7 +66,7 @@ def settle(entry: float, now: float, sl_pct: float, tp_pct: float, timeout_hit: 
     return {"status": "OPEN", "pnl_pct": round(ret, 2)}
 
 def summarize(outcomes: list[dict]) -> dict:
-    closed = [o for o in outcomes if o.get("status") in ("TP", "SL", "TIMEOUT")]
+    closed = [o for o in outcomes if o.get("status") in CLOSED_STATUSES]
     if not closed:
         return {"n": 0, "winrate": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "expectancy": 0.0, "note": "belum ada posisi closed"}
     wins = [o for o in closed if o["pnl_pct"] > 0]
@@ -74,4 +78,81 @@ def summarize(outcomes: list[dict]) -> dict:
             "avg_win": round(aw, 2), "avg_loss": round(al, 2),
             "expectancy": round(expectancy(wr, aw, al), 2),
             "tp": sum(1 for o in closed if o["status"] == "TP"),
-            "sl": sum(1 for o in closed if o["status"] == "SL")}
+            "sl": sum(1 for o in closed if o["status"] == "SL"),
+            "trail": sum(1 for o in closed if o["status"] == "TRAIL")}
+
+
+def simulate_trailing_exit(entry_ts: int, entry: float, candles: list[dict],
+                           sl_pct: float, tp_pct: float | None = None,
+                           timeout_h: float | None = None,
+                           activation_pct: float = 8.0,
+                           callback_pct: float = 4.0) -> dict:
+    """Simulasi exit cepat + trailing stop di atas candle.
+
+    Aturan (konservatif, konsisten dengan replay()):
+    - SL tetap selalu aktif; bila satu candle menyentuh SL dan target lain,
+      dimenangkan SL (asumsi eksekusi terburuk).
+    - TP tetap (bila tp_pct diberikan) = exit cepat saat high menyentuh target.
+    - Setelah peak >= activation, stop naik mengikuti peak*(1-callback);
+      low menyentuh stop -> TRAIL (kunci profit runner).
+    - Timeout dihitung dari timestamp candle seperti replay().
+    Return dict {status, pnl_pct, exit_price, mfe, mae, bars, note}.
+    """
+    if not entry or entry <= 0:
+        return {"status": "UNKNOWN", "pnl_pct": 0.0, "exit_price": 0.0,
+                "mfe": 0.0, "mae": 0.0, "bars": 0}
+    sl = float(entry) * (1 - abs(float(sl_pct)) / 100)
+    tp = float(entry) * (1 + abs(float(tp_pct)) / 100) if tp_pct else None
+    cb = abs(float(callback_pct)) / 100
+    act = abs(float(activation_pct)) / 100
+    mfe = 0.0
+    mae = 0.0
+    bars = 0
+    peak = float(entry)
+    trail: float | None = None
+    future = [c for c in (candles or []) if int(c.get("ts", 0)) >= int(entry_ts)]
+    if not future:
+        return {"status": "NO_DATA", "pnl_pct": 0.0, "exit_price": 0.0,
+                "mfe": 0.0, "mae": 0.0, "bars": 0}
+    for c in future:
+        bars += 1
+        try:
+            hi, lo, cl = float(c["h"]), float(c["l"]), float(c["c"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        mfe = max(mfe, (hi - entry) / entry * 100)
+        mae = min(mae, (lo - entry) / entry * 100)
+        peak = max(peak, hi)
+        if trail is None and (peak - entry) / entry >= act:
+            trail = peak * (1 - cb)
+        elif trail is not None:
+            trail = max(trail, peak * (1 - cb))
+        sl_hit = lo <= sl
+        tp_hit = tp is not None and hi >= tp
+        trail_hit = trail is not None and lo <= trail
+        if sl_hit:
+            return {"status": "SL", "pnl_pct": round(-abs(float(sl_pct)), 2),
+                    "exit_price": round(sl, 8),
+                    "mfe": round(mfe, 2), "mae": round(mae, 2), "bars": bars,
+                    "note": "SL didahulukan (konservatif)"}
+        if tp_hit:
+            assert tp is not None
+            return {"status": "TP", "pnl_pct": round(abs(float(tp_pct or 0)), 2),
+                    "exit_price": round(tp, 8),
+                    "mfe": round(mfe, 2), "mae": round(mae, 2), "bars": bars,
+                    "note": "TP cepat sebelum trailing"}
+        if trail_hit:
+            assert trail is not None
+            return {"status": "TRAIL", "pnl_pct": round((trail - entry) / entry * 100, 2),
+                    "exit_price": round(trail, 8),
+                    "mfe": round(mfe, 2), "mae": round(mae, 2), "bars": bars,
+                    "note": f"trailing stop callback {callback_pct}% dari peak"}
+        if timeout_h is not None and (int(c["ts"]) - int(entry_ts)) >= timeout_h * 3600:
+            pnl = (cl - entry) / entry * 100
+            return {"status": "TIMEOUT", "pnl_pct": round(pnl, 2),
+                    "exit_price": round(cl, 8),
+                    "mfe": round(mfe, 2), "mae": round(mae, 2), "bars": bars}
+    last = float(future[-1].get("c", entry))
+    return {"status": "OPEN", "pnl_pct": round((last - entry) / entry * 100, 2),
+            "exit_price": round(last, 8),
+            "mfe": round(mfe, 2), "mae": round(mae, 2), "bars": bars}

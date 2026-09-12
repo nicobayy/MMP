@@ -92,7 +92,7 @@ def main():
         flag = "OK" if v["n"] >= min_n and v["expectancy"] > 0 else ("EXPLORATORY" if v["n"] < min_n else "NEGATIVE")
         print(f"{k}: n={v['n']} wr={v['winrate']} exp={v['expectancy']} MFE={v['avg_mfe']} MAE={v['avg_mae']} [{flag}]")
     if not rep:
-        print("Tak ada outcome TP/SL/TIMEOUT untuk dikalibrasi.")
+        print("Tak ada outcome TP/SL/TIMEOUT/TRAIL untuk dikalibrasi.")
 
 if __name__ == "__main__":
     main()

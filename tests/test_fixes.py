@@ -102,6 +102,21 @@ def test_settle_spot_closes_despite_stale_candles(monkeypatch):
     r = paper.settle_position(o, cfg, 6.0, 1.0, 0.3, con)
     assert r["status"] == "SL", f"spot -15% wajib SL, dapat {r}"
 
+def test_latest_boosts_endpoint_and_cache(monkeypatch):
+    from mmp.collectors import cache as _cache
+    from mmp.collectors import dexscreener as _dex
+    _cache.clear()
+    calls = {"n": 0}
+
+    def fake_get(path, retries=2):
+        calls["n"] += 1
+        assert path == "/token-boosts/latest/v1"
+        return [{"tokenAddress": "X", "chainId": "solana"}]
+    monkeypatch.setattr(_dex, "_get", fake_get)
+    assert _dex.get_latest_boosts() == [{"tokenAddress": "X", "chainId": "solana"}]
+    assert _dex.get_latest_boosts() == [{"tokenAddress": "X", "chainId": "solana"}]
+    assert calls["n"] == 1, "panggilan kedua wajib dari cache"
+
 def test_settle_timeout():
     r = settle(100, 110, 15, 30, timeout_hit=True)
     assert r == {"status": "TIMEOUT", "pnl_pct": 10.0}

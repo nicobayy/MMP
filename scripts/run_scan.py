@@ -360,6 +360,20 @@ def main():
             print(f"DexScreener boosts gagal ({e}). Coba fallback GeckoTerminal EVM...")
             boosts = []
         pairs = uni.universe_from_boosts(boosts, cfg, limit_per_chain=args.limit) if boosts else []
+        # Sumber latest (rotasi cepat, untuk sniper): di-resolve terpisah agar tak
+        # tergusur top boosts yang stagnan, lalu dedup token di bawah.
+        # Default mati (filter tak berubah); sniper aktif via universe.latest_limit.
+        try:
+            latest_n = int((cfg.get("universe") or {}).get("latest_limit", 0) or 0)
+        except (TypeError, ValueError):
+            latest_n = 0
+        if latest_n > 0:
+            try:
+                latest = dex.get_latest_boosts()
+                if latest:
+                    pairs += uni.universe_from_boosts(latest, cfg, limit_per_chain=latest_n)
+            except Exception as e:
+                log.debug("latest boosts skip: %s", str(e)[:160])
         if args.gecko_fallback:
             try:
                 extra = gecko.universe_fallback(cfg, per_chain=3)

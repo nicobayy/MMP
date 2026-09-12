@@ -80,6 +80,15 @@ def get_top_boosts() -> list[dict]:
     _cache.put("boosts", out, 120)
     return out
 
+def get_latest_boosts() -> list[dict]:
+    """Boost terbaru — rotasi cepat, bahan sniper. TTL pendek (60 dtk)."""
+    hit = _cache.get("boosts_latest", 60)
+    if hit is not None:
+        return hit
+    out = _get("/token-boosts/latest/v1")
+    _cache.put("boosts_latest", out, 60)
+    return out
+
 def pick_best_pair(pairs: list[dict]) -> dict | None:
     """Pilih pair paling likuid sebagai representasi token."""
     if not pairs:

@@ -27,6 +27,10 @@ def init(con: sqlite3.Connection):
         con.execute("ALTER TABLE paper_positions ADD COLUMN tier INTEGER DEFAULT 1")
     except Exception as e:
         log.debug("paper migrate skip: %s", str(e)[:120])
+    try:  # pool Gecko untuk analisis MAE/MFE dari candle cache (token mati hilang dari API)
+        con.execute("ALTER TABLE paper_positions ADD COLUMN pool TEXT DEFAULT ''")
+    except Exception as e:
+        log.debug("paper migrate pool skip: %s", str(e)[:120])
     con.commit()
 
 def open_from_signal(con: sqlite3.Connection, sig: dict, risk_pct: float = 1.0) -> int:
@@ -89,3 +93,14 @@ def close_position(con: sqlite3.Connection, pid: int, exit_price: float, pnl_pct
     con.execute("UPDATE paper_positions SET status='CLOSED', closed_ts=CURRENT_TIMESTAMP,"
                 " exit_price=?, pnl_pct=?, close_reason=? WHERE id=?", (exit_price, pnl_pct, reason, pid))
     con.commit()
+
+def set_pool(con: sqlite3.Connection, pid: int, pool: str):
+    """Rekam pool Gecko posisi (best-effort, untuk analisis cache pasca-mati)."""
+    if not pool:
+        return
+    try:
+        con.execute("UPDATE paper_positions SET pool=? WHERE id=? AND (pool IS NULL OR pool='')",
+                    (pool, pid))
+        con.commit()
+    except Exception as e:
+        log.debug("paper set_pool skip: %s", str(e)[:120])

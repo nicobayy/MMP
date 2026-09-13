@@ -176,3 +176,16 @@ def test_universe_survives_pair_failures(monkeypatch):
     cfg = {"chains": {"enabled": ["solana"], "priority": ["solana"], "per_chain_limit": 5}}
     boosts = [{"tokenAddress": "A", "chainId": "solana"}]
     assert uni.universe_from_boosts(boosts, cfg) == []
+
+def test_paper_pool_recorded():
+    con = sqlite3.connect(":memory:")
+    pstore.init(con)
+    pid = pstore.open_from_signal(con, {"db_id": 1, "symbol": "F", "chain": "solana",
+        "token_address": "M", "pair_address": "P", "price_usd": 10.0,
+        "plan": {"stop_loss": 8.5, "take_profit": 13.0}})
+    pstore.set_pool(con, pid, "POOLX")
+    row = con.execute("SELECT pool FROM paper_positions WHERE id=?", (pid,)).fetchone()
+    assert row[0] == "POOLX"
+    pstore.set_pool(con, pid, "LAIN")
+    row = con.execute("SELECT pool FROM paper_positions WHERE id=?", (pid,)).fetchone()
+    assert row[0] == "POOLX", "pool pertama menang (jangan timpa)"

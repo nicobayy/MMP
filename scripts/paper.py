@@ -122,7 +122,7 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
         if r.get("status") in CLOSED_STATUSES:
             net = apply_costs(float(r.get("pnl_pct", 0.0)), slip, fee)
             return {"status": r["status"], "pnl_pct": net, "exit_price": r.get("exit_price", 0.0),
-                    "via": "trail", "gross": float(r.get("pnl_pct", 0.0))}
+                    "via": "trail", "gross": float(r.get("pnl_pct", 0.0)), "pool": pool}
         # Tak menutup -> jatuh ke cek spot di bawah (jaring pengaman).
     elif candles:
         r = replay_candles(_epoch(o.get("opened_ts", "")), float(o.get("entry") or 0),
@@ -132,20 +132,20 @@ def settle_position(o: dict, cfg: dict, timeout_h: float, slip: float, fee: floa
             exit_px = float(o.get("tp") or 0) if r["status"] == "TP" \
                 else (float(o.get("sl") or 0) if r["status"] == "SL" else float(candles[-1].get("c", o.get("entry") or 0)))
             return {"status": r["status"], "pnl_pct": net, "exit_price": exit_px,
-                    "via": "replay", "gross": float(r.get("pnl_pct", 0.0))}
+                    "via": "replay", "gross": float(r.get("pnl_pct", 0.0)), "pool": pool}
         # Replay tak menutup (candle kasar/jarang) -> JATUH ke cek spot di bawah.
         # Jangan return OPEN di sini: harga spot yang jebol SL wajib menutup posisi.
     # 2. Fallback harga titik (mark-to-market)
     px = live_price(o["chain"], o["pair_addr"], o.get("token", ""))
     if not px:
-        return {"status": "NO_DATA", "pnl_pct": 0.0, "exit_price": 0.0, "via": "spot"}
+        return {"status": "NO_DATA", "pnl_pct": 0.0, "exit_price": 0.0, "via": "spot", "pool": pool}
     timed_out = age_hours(o.get("opened_ts", "")) >= timeout_h
     r = settle(o["entry"], px, sl_pct, tp_pct, timeout_hit=timed_out)
     if r["status"] in CLOSED_STATUSES:
         net = apply_costs(r["pnl_pct"], slip, fee)
         return {"status": r["status"], "pnl_pct": net, "exit_price": px,
-                "via": "spot", "gross": r["pnl_pct"]}
-    return {"status": "OPEN", "pnl_pct": r["pnl_pct"], "exit_price": px, "via": "mark-to-market"}
+                "via": "spot", "gross": r["pnl_pct"], "pool": pool}
+    return {"status": "OPEN", "pnl_pct": r["pnl_pct"], "exit_price": px, "via": "mark-to-market", "pool": pool}
 
 
 def age_hours(opened_ts: str) -> float:
@@ -198,6 +198,8 @@ def main():
             except Exception:
                 _slip, _fee = slip, fee
             r = settle_position(o, cfg, timeout_h, _slip, _fee, con)
+            if r.get("pool"):
+                pstore.set_pool(con, o["id"], r["pool"])
             if r["status"] in CLOSED_STATUSES and not args.mark_to_market:
                 pstore.close_position(con, o["id"], r["exit_price"], r["pnl_pct"], r["status"])
                 fed = wal.attribute_token_outcome(con, o.get("token", ""), r["pnl_pct"] > 0, r["pnl_pct"]) if o.get("token") else 0

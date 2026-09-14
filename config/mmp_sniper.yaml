@@ -27,7 +27,7 @@ weights:
   kol: 5
 
 risk:
-  min_liquidity_usd: 12000
+  min_liquidity_usd: 20000
   min_volume_h24_usd: 10000
   min_txns_h24: 50
   min_holders: 50
@@ -39,12 +39,12 @@ risk:
   min_pair_age_minutes: 3     # mulai 3m, turunkan ke 1-2m bila expectancy P1 hijau
   blocked_labels: ["honeypot", "mintable-risk", "freezable-risk"]
   veto_on_blind: false
-  veto_on_unknown_age: false
+  veto_on_unknown_age: false  # true = pair tanpa pairCreatedAt -> VETO AGE_UNKNOWN (default: lolos, umur tak terverifikasi)
 
 liquidity:
-  min_liquidity_usd: 12000
-  min_volume_to_liquidity_ratio: 1.0
-  max_price_impact_1k_pct: 8.0
+  min_liquidity_usd: 20000
+  min_volume_to_liquidity_ratio: 1.0  # volume h24 / liquidity >= 1 => ada aktivitas exit
+  max_price_impact_1k_pct: 8.0      # order hipotetis $1000 vs likuiditas (proxy kasar, lihat liquidity.py)
   min_dex_count: 1
 
 token_metrics:

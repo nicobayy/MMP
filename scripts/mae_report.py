@@ -77,7 +77,7 @@ def main() -> None:
         return [], tf_cfg
     rows = con.execute(
         "SELECT id, symbol, chain, entry, opened_ts, closed_ts, close_reason, pnl_pct,"
-        " COALESCE(pool,'') FROM paper_positions"
+        " COALESCE(pool,''), mae, mfe FROM paper_positions"
         " WHERE status='CLOSED' AND entry > 0 ORDER BY id").fetchall()
     if not rows:
         print("Belum ada posisi CLOSED.")
@@ -90,7 +90,19 @@ def main() -> None:
     wins_mae: list[float] = []
     wicked = 0
     n_win = 0
-    for pid, sym, ch, entry, opened, closed, reason, pnl, pool in rows:
+    for pid, sym, ch, entry, opened, closed, reason, pnl, pool, col_mae, col_mfe in rows:
+        if col_mae is not None or col_mfe is not None:
+            mae = float(col_mae) if col_mae is not None else 0.0
+            mfe = float(col_mfe) if col_mfe is not None else 0.0
+            n_c, src = "-", "rekam-close"
+            win = float(pnl or 0) > 0
+            if win:
+                n_win += 1
+                wins_mae.append(mae)
+                if mae <= -abs(args.sl):
+                    wicked += 1
+            print(f"#{pid} {sym} {reason} {pnl}%: MAE {mae}% MFE {mfe}% ({n_c} candle, {src})")
+            continue
         start = _epoch(opened) - 3600
         end = _epoch(closed) if closed else int(datetime.now(timezone.utc).timestamp())
         opened_epoch = _epoch(opened)

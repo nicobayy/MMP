@@ -189,3 +189,6 @@ def test_paper_pool_recorded():
     pstore.set_pool(con, pid, "LAIN")
     row = con.execute("SELECT pool FROM paper_positions WHERE id=?", (pid,)).fetchone()
     assert row[0] == "POOLX", "pool pertama menang (jangan timpa)"
+    pstore.close_position(con, pid, 11.0, 10.0, "TP", mae=-3.5, mfe=12.0)
+    row = con.execute("SELECT mae, mfe, close_reason FROM paper_positions WHERE id=?", (pid,)).fetchone()
+    assert (row[0], row[1], row[2]) == (-3.5, 12.0, "TP")

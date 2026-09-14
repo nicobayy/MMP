@@ -31,6 +31,14 @@ def init(con: sqlite3.Connection):
         con.execute("ALTER TABLE paper_positions ADD COLUMN pool TEXT DEFAULT ''")
     except Exception as e:
         log.debug("paper migrate pool skip: %s", str(e)[:120])
+    try:  # MAE/MFE saat close: jawaban wick-out tanpa bergantung cache/API di masa depan
+        con.execute("ALTER TABLE paper_positions ADD COLUMN mae REAL DEFAULT NULL")
+    except Exception as e:
+        log.debug("paper migrate mae skip: %s", str(e)[:120])
+    try:
+        con.execute("ALTER TABLE paper_positions ADD COLUMN mfe REAL DEFAULT NULL")
+    except Exception as e:
+        log.debug("paper migrate mfe skip: %s", str(e)[:120])
     con.commit()
 
 def open_from_signal(con: sqlite3.Connection, sig: dict, risk_pct: float = 1.0) -> int:
@@ -89,9 +97,14 @@ def recently_closed(con: sqlite3.Connection, chain: str, token: str, pair_addr: 
         log.debug("recently_closed skip: %s", str(e)[:120])
         return False, None
 
-def close_position(con: sqlite3.Connection, pid: int, exit_price: float, pnl_pct: float, reason: str):
+def close_position(con: sqlite3.Connection, pid: int, exit_price: float, pnl_pct: float, reason: str,
+                   mae: float | None = None, mfe: float | None = None):
     con.execute("UPDATE paper_positions SET status='CLOSED', closed_ts=CURRENT_TIMESTAMP,"
                 " exit_price=?, pnl_pct=?, close_reason=? WHERE id=?", (exit_price, pnl_pct, reason, pid))
+    try:
+        con.execute("UPDATE paper_positions SET mae=?, mfe=? WHERE id=?", (mae, mfe, pid))
+    except Exception as e:
+        log.debug("paper close mae/mfe skip: %s", str(e)[:120])
     con.commit()
 
 def set_pool(con: sqlite3.Connection, pid: int, pool: str):

@@ -88,7 +88,11 @@ def main() -> None:
                 continue
             pool, src = pools[0], "tebak-1"
         cs = [c for c in cstore.get_candles(con, ch, pool, tf, since=start)
-              if int(c.get("ts", 0)) <= end]
+              if start <= int(c.get("ts", 0)) <= end]
+        # Hanya aksi SETELAH entry yang adil dinilai; candle sejam pra-entry
+        # (buffer `since`) wajib dibuang agar MAE/MFE tak bocor data lama.
+        opened_epoch = _epoch(opened)
+        cs = [c for c in cs if int(c.get("ts", 0)) >= opened_epoch]
         if not cs:
             print(f"#{pid} {sym}: SKIP (cache kosong)")
             continue

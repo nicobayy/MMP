@@ -99,3 +99,63 @@ def pick_best_pair(pairs: list[dict]) -> dict | None:
         except Exception:
             return 0.0
     return sorted(pairs, key=liq, reverse=True)[0]
+
+
+CHART_BASE = "https://io.dexscreener.com"
+
+
+def get_bars(chain: str, pair_addr: str, start_ms: int, end_ms: int,
+             res: str = "5") -> list[dict]:
+    """Ambil bar histori chart DexScreener (endpoint UI, best-effort).
+
+    Alasan ada: GeckoTerminal menghapus pool token mati, tapi chart
+    DexScreener sering masih menyimpan histori pair mati — satu-satunya
+    cara menjawab MAE/MFE posisi lama tanpa menunggu data baru.
+    Return candle terurut naik [{ts,o,h,l,c,v}] (ts = epoch detik).
+    Gagal/berubah format -> [] (jujur, bukan karangan).
+    """
+    chain = (chain or "").strip()
+    pair_addr = (pair_addr or "").strip()
+    if not chain or not pair_addr or start_ms <= 0 or end_ms <= start_ms:
+        return []
+    try:
+        import random as _r
+        url = (f"{CHART_BASE}/u/chart/bars/{chain}/{pair_addr}"
+               f"?res={res}&from={int(start_ms)}&to={int(end_ms)}&cb={_r.randint(1, 999999)}")
+        r = requests.get(url, timeout=TIMEOUT,
+                         headers={"Accept": "application/json",
+                                  "Referer": "https://dexscreener.com/",
+                                  "User-Agent": "Mozilla/5.0"})
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        log.debug("dexscreener bars gagal: %s", str(e)[:160])
+        return []
+    raw = []
+    try:
+        if isinstance(data, dict):
+            raw = data.get("bars") or data.get("data") or []
+        elif isinstance(data, list):
+            raw = data
+    except Exception:
+        return []
+    out = []
+    for b in raw or []:
+        try:
+            if isinstance(b, dict):
+                t = int(b.get("t", b.get("ts", b.get("time", 0))))
+                o, h, lo, c = float(b["o"]), float(b["h"]), float(b["l"]), float(b["c"])
+                v = float(b.get("v", b.get("volume", 0)) or 0)
+            elif isinstance(b, (list, tuple)) and len(b) >= 6:
+                t, o, h, lo, c, v = int(b[0]), float(b[1]), float(b[2]), float(b[3]), float(b[4]), float(b[5])
+            else:
+                continue
+            if t > 10_000_000_000:  # ms -> detik
+                t //= 1000
+            if o <= 0 or h <= 0 or lo <= 0 or c <= 0:
+                continue
+            out.append({"ts": t, "o": o, "h": h, "l": lo, "c": c, "v": v})
+        except (KeyError, TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: x["ts"])
+    return out

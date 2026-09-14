@@ -158,6 +158,36 @@ def test_position_plan_honest_on_zero_entry():
     assert build_plan(0, cfg)["expectancy_ok"] is False
     assert build_plan(100.0, cfg)["expectancy_ok"] is True
 
+def test_dexscreener_bars_parsing(monkeypatch):
+    from mmp.collectors import dexscreener as _dex
+
+    class Resp:
+        def __init__(self, payload):
+            self._p = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._p
+
+    seen = {}
+
+    def fake_get(url, timeout=15, headers=None):
+        seen["url"] = url
+        return Resp({"bars": [
+            {"t": 1700000000000, "o": 100.0, "h": 110.0, "l": 99.0, "c": 108.0, "v": 5.0},
+            {"t": "rusak"},
+            {"o": 1.0},  # tanpa ts/harga lengkap -> buang
+        ]})
+    monkeypatch.setattr(_dex.requests, "get", fake_get)
+    out = _dex.get_bars("solana", "PAIR", 1699999000000, 1700001000000)
+    assert len(out) == 1 and out[0]["ts"] == 1700000000, out  # ms -> detik
+    assert "/u/chart/bars/solana/PAIR" in seen["url"]
+    monkeypatch.setattr(_dex.requests, "get", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
+    assert _dex.get_bars("solana", "PAIR", 1, 2) == []
+    assert _dex.get_bars("", "", 0, 0) == []
+
 def test_dexscreener_retries_then_succeeds(monkeypatch):
     calls = {"n": 0}
     class Resp:

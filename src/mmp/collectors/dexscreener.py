@@ -131,7 +131,7 @@ def get_bars(chain: str, pair_addr: str, start_ms: int, end_ms: int,
     except Exception as e:
         log.debug("dexscreener bars gagal: %s", str(e)[:160])
         return []
-    raw = []
+    raw: list = []
     try:
         if isinstance(data, dict):
             raw = data.get("bars") or data.get("data") or []
@@ -143,7 +143,8 @@ def get_bars(chain: str, pair_addr: str, start_ms: int, end_ms: int,
     for b in raw or []:
         try:
             if isinstance(b, dict):
-                t = int(b.get("t", b.get("ts", b.get("time", 0))))
+                t_raw = b.get("t", b.get("ts", b.get("time", 0)))
+                t = int(t_raw or 0)
                 o, h, lo, c = float(b["o"]), float(b["h"]), float(b["l"]), float(b["c"])
                 v = float(b.get("v", b.get("volume", 0)) or 0)
             elif isinstance(b, (list, tuple)) and len(b) >= 6:

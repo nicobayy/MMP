@@ -27,7 +27,7 @@ weights:
   kol: 5
 
 risk:
-  min_liquidity_usd: 20000
+  min_liquidity_usd: 12000
   min_volume_h24_usd: 10000
   min_txns_h24: 50
   min_holders: 50
@@ -42,7 +42,7 @@ risk:
   veto_on_unknown_age: false  # true = pair tanpa pairCreatedAt -> VETO AGE_UNKNOWN (default: lolos, umur tak terverifikasi)
 
 liquidity:
-  min_liquidity_usd: 20000
+  min_liquidity_usd: 12000
   min_volume_to_liquidity_ratio: 1.0  # volume h24 / liquidity >= 1 => ada aktivitas exit
   max_price_impact_1k_pct: 8.0      # order hipotetis $1000 vs likuiditas (proxy kasar, lihat liquidity.py)
   min_dex_count: 1
@@ -58,7 +58,7 @@ token_metrics:
 momentum:
   enabled: true
   min_h1_pct: 0.0         # tolak yang h1 negatif (dumping); pair segar ~0 lolos via cek lain
-  min_buy_ratio: 0.55     # dominasi buyer dari txns h24
+  min_buy_ratio: 0.60     # dominasi buyer dari txns h24 (diuji vs 0.55)
   min_vol_h1_usd: 2000    # ada uang masuk sejam terakhir
   min_intensity: 1.5      # vol h1 >= 1.5x rata-rata per-jam (berakselerasi)
   max_age_minutes: 180    # hanya token segar <= 3 jam

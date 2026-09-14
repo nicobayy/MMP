@@ -55,12 +55,26 @@ def main() -> None:
                     help=" garis SL untuk hitung wick-out (default 6)")
     args = ap.parse_args()
     cfg = load_config()
-    tf = str((cfg.get("backtest") or {}).get("replay_tf", "hour"))
-    if tf not in ("minute", "hour", "day"):
-        tf = "hour"
+    tf_cfg = str((cfg.get("backtest") or {}).get("replay_tf", "hour"))
+    if tf_cfg not in ("minute", "hour", "day"):
+        tf_cfg = "hour"
     con = connect(db_path())
     pstore.init(con)
     cstore.init(con)
+
+    def _pool_candles(ch: str, pool: str, start: int, end: int, opened_epoch: int):
+        # Coba TF config dulu, lalu TF lain: jangan SKIP hanya karena env
+        # MMP_CONFIG lupa diisi (filter=hour vs sniper=minute).
+        for tf in dict.fromkeys([tf_cfg, "minute", "hour", "day"]):
+            try:
+                cs = [c for c in cstore.get_candles(con, ch, pool, tf, since=start)
+                      if start <= int(c.get("ts", 0)) <= end
+                      and int(c.get("ts", 0)) >= opened_epoch]
+            except Exception:
+                continue
+            if cs:
+                return cs, tf
+        return [], tf_cfg
     rows = con.execute(
         "SELECT id, symbol, chain, entry, opened_ts, closed_ts, close_reason, pnl_pct,"
         " COALESCE(pool,'') FROM paper_positions"
@@ -68,31 +82,41 @@ def main() -> None:
     if not rows:
         print("Belum ada posisi CLOSED.")
         return
+    try:
+        db_candles = con.execute("SELECT COUNT(*) FROM candles").fetchone()[0]
+    except Exception:
+        db_candles = 0
+    print(f"cache candles di DB: {db_candles} baris (bila 0, cache memang kosong)")
     wins_mae: list[float] = []
     wicked = 0
     n_win = 0
     for pid, sym, ch, entry, opened, closed, reason, pnl, pool in rows:
         start = _epoch(opened) - 3600
         end = _epoch(closed) if closed else int(datetime.now(timezone.utc).timestamp())
+        opened_epoch = _epoch(opened)
         src = "rekam"
+        tf_use = tf_cfg
         if not pool:
-            try:
-                cands = con.execute(
-                    "SELECT DISTINCT pool FROM candles WHERE chain=? AND tf=?"
-                    " AND ts>=? AND ts<=?", (ch, tf, start, end)).fetchall()
-            except Exception:
-                cands = []
-            pools = [r[0] for r in cands if r[0]]
-            if len(pools) != 1:
-                print(f"#{pid} {sym}: SKIP (kandidat pool={len(pools)}, tak ditebak)")
+            tf_use = ""
+            for tf_try in dict.fromkeys([tf_cfg, "minute", "hour", "day"]):
+                try:
+                    cands = con.execute(
+                        "SELECT DISTINCT pool FROM candles WHERE chain=? AND tf=?"
+                        " AND ts>=? AND ts<=?", (ch, tf_try, start, end)).fetchall()
+                except Exception:
+                    continue
+                pools = [r[0] for r in cands if r[0]]
+                if len(pools) == 1:
+                    pool, src, tf_use = pools[0], "tebak-1", tf_try
+                    break
+            if not tf_use:
+                print(f"#{pid} {sym}: SKIP (pool tak pasti, tak ditebak)")
                 continue
-            pool, src = pools[0], "tebak-1"
-        cs = [c for c in cstore.get_candles(con, ch, pool, tf, since=start)
-              if start <= int(c.get("ts", 0)) <= end]
+        cs, tf_hit = _pool_candles(ch, pool, start, end, opened_epoch)
+        if tf_hit != tf_use:
+            src += f"/tf-{tf_hit}"
         # Hanya aksi SETELAH entry yang adil dinilai; candle sejam pra-entry
         # (buffer `since`) wajib dibuang agar MAE/MFE tak bocor data lama.
-        opened_epoch = _epoch(opened)
-        cs = [c for c in cs if int(c.get("ts", 0)) >= opened_epoch]
         if not cs:
             print(f"#{pid} {sym}: SKIP (cache kosong)")
             continue

@@ -34,6 +34,8 @@ def momentum_gate(pair: dict, cfg: dict) -> tuple[bool, list[str]]:
         min_vol_h1 = float(m.get("min_vol_h1_usd", 2000))
         min_intensity = float(m.get("min_intensity", 1.5))
         max_age = float(m.get("max_age_minutes", 180))
+        min_m5_br = float(m.get("min_m5_buy_ratio", 0.55))
+        min_m5_txns = int(m.get("min_m5_txns", 5))
     except (TypeError, ValueError):
         return False, ["momentum: config tak numerik"]
 
@@ -66,6 +68,20 @@ def momentum_gate(pair: dict, cfg: dict) -> tuple[bool, list[str]]:
         buys, sells = int(tx.get("buys") or 0), int(tx.get("sells") or 0)
     except (TypeError, ValueError):
         buys, sells = 0, 0
+    # Bukti segar dulu: m5 adalah bucket terkecil DexScreener (verifikasi API).
+    # Jendela parsial (< min_m5_txns) tak dianggap bukti -> fallback h24.
+    m5 = (pair.get("txns") or {}).get("m5") or {}
+    try:
+        m5_buys, m5_sells = int(m5.get("buys") or 0), int(m5.get("sells") or 0)
+    except (TypeError, ValueError):
+        m5_buys, m5_sells = 0, 0
+    if m5_buys + m5_sells >= min_m5_txns:
+        m5_br = m5_buys / (m5_buys + m5_sells)
+        if m5_br < min_m5_br:
+            return False, [f"momentum: buy ratio m5 {m5_br:.0%} < {min_m5_br:.0%} (tekanan jual kini)"]
+        notes.append(f"buy ratio m5 {m5_br:.0%} ({m5_buys + m5_sells} txn)")
+    else:
+        notes.append(f"m5 tipis ({m5_buys + m5_sells} txn), nilai via h24")
     if buys + sells > 0:
         br = buys / (buys + sells)
         if br < min_br:

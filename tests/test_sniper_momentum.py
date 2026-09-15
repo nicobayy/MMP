@@ -55,6 +55,16 @@ def test_gate_rejects_stale():
     assert momentum_gate(p, CFG)[0] is False, "umur > max wajib veto (bukan snipe segar)"
 
 
+def test_gate_m5_fresh_evidence():
+    base_txns = {"h24": {"buys": 120, "sells": 80}, "m5": {"buys": 2, "sells": 18}}
+    assert momentum_gate(_pair(txns=base_txns), CFG)[0] is False, "m5 jual-dominated wajib veto"
+    thin = {"h24": {"buys": 120, "sells": 80}, "m5": {"buys": 1, "sells": 0}}
+    assert momentum_gate(_pair(txns=thin), CFG)[0] is True, "m5 tipis -> fallback h24"
+    strong = {"h24": {"buys": 120, "sells": 80}, "m5": {"buys": 15, "sells": 5}}
+    ok, notes = momentum_gate(_pair(txns=strong), CFG)
+    assert ok and any("m5" in n for n in notes), notes
+
+
 def test_trailing_locks_profit():
     cs = [_c(0, 100, 102, 99, 101),      # +2%, belum aktivasi (8%)
           _c(3600, 101, 112, 100, 110),  # peak +12% -> trail 107.5

@@ -58,7 +58,9 @@ token_metrics:
 momentum:
   enabled: true
   min_h1_pct: 0.0         # tolak yang h1 negatif (dumping); pair segar ~0 lolos via cek lain
-  min_buy_ratio: 0.60     # dominasi buyer dari txns h24 (diuji vs 0.55)
+  min_buy_ratio: 0.55     # kembali dari 0.60: 21 close era 0.60 cuma 33% win
+  min_m5_buy_ratio: 0.60  # bukti segar: bucket terkecil DexScreener (fallback h24 bila tipis)
+  min_m5_txns: 5          # di bawah ini m5 tak dianggap bukti (jendela parsial)
   min_vol_h1_usd: 2000    # ada uang masuk sejam terakhir
   min_intensity: 1.5      # vol h1 >= 1.5x rata-rata per-jam (berakselerasi)
   max_age_minutes: 180    # hanya token segar <= 3 jam

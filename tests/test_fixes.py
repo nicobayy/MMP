@@ -222,3 +222,28 @@ def test_paper_pool_recorded():
     pstore.close_position(con, pid, 11.0, 10.0, "TP", mae=-3.5, mfe=12.0)
     row = con.execute("SELECT mae, mfe, close_reason FROM paper_positions WHERE id=?", (pid,)).fetchone()
     assert (row[0], row[1], row[2]) == (-3.5, 12.0, "TP")
+
+def test_seed_winners_only_winners(monkeypatch):
+    import importlib.util
+    from pathlib import Path as _P
+    spec = importlib.util.spec_from_file_location(
+        "seed_mod", str(_P(__file__).resolve().parents[1] / "scripts" / "seed_winners.py"))
+    seed = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seed)
+    monkeypatch.setattr(seed.hel, "has_key", lambda: True)
+    monkeypatch.setattr(seed.hel, "build_enrichment",
+                        lambda token, cfg: {"holder_accounts": [f"W-{token}-1", f"W-{token}-2"]})
+    con = sqlite3.connect(":memory:")
+    from mmp.storage import wallets as wal
+    wal.init(con)
+    pstore.init(con)
+    for sym, tok, pnl in (("WIN", "T-WIN", 10.0), ("LOSE", "T-LOSE", -10.0)):
+        pid = pstore.open_from_signal(con, {"db_id": 1, "symbol": sym, "chain": "solana",
+            "token_address": tok, "pair_address": "P", "price_usd": 1.0,
+            "plan": {"stop_loss": 0.9, "take_profit": 1.2}})
+        pstore.close_position(con, pid, 1.0, pnl, "TP" if pnl > 0 else "SL")
+    monkeypatch.setattr(seed, "connect", lambda path: con)
+    monkeypatch.setattr(sys, "argv", ["seed_winners.py", "--limit", "10"])
+    seed.main()
+    rows = con.execute("SELECT DISTINCT token FROM wallet_sightings").fetchall()
+    assert [r[0] for r in rows] == ["T-WIN"], rows
